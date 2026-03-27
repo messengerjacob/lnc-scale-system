@@ -1,0 +1,17 @@
+name: scaleflow_local_db
+description: SQL Server Express connection, repositories, and migrations for ScaleFlow
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  mssql_connection: ^3.0.0
+  scaleflow_core:
+    path: ../core
+  win32_registry: ^1.1.2
+
+dev_dependencies:
+  lints: ^3.0.0
+  test: ^1.24.0

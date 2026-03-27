@@ -1,0 +1,10 @@
+name: scaleflow_core
+description: Shared Dart models, DTOs, and validation logic for ScaleFlow
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  equatable: ^2.0.5
