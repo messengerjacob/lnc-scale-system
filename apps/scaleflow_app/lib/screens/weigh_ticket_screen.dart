@@ -1,6 +1,11 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:scaleflow_core/scaleflow_core.dart';
 import '../mock_data.dart';
 import '../services/webhook_service.dart';
@@ -452,6 +457,27 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
             ? '  •  Webhook delivered'
             : '  •  Webhook failed (ticket saved)';
 
+    await _createAndPrintTicketPdf(
+      ticketNumber: ticketNumber,
+      isInbound: _isInbound,
+      loadNumber: entry.loadNumber,
+      location: _location,
+      terminal: _terminal!,
+      entityName: _isInbound ? (_supplier?.name ?? '—') : (_customer?.name ?? '—'),
+      truckInfo:
+          '${_truck?.licensePlate ?? '—'} (${_truck?.description ?? '—'})',
+      driverName: _driver?.name,
+      productInfo: _product != null ? '${_product!.name} (${_product!.category})' : '—',
+      grossWeight: gross,
+      tareWeight: tare,
+      netWeight: (gross - tare).abs(),
+      isSplitLoad: _isSplitLoad,
+      splitWith: _splitLoadNumberController.text.trim(),
+      fromBin: _fromBin,
+      toBin: _toBin,
+      notes: notes,
+    );
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('$ticketNumber complete$webhookMsg'),
@@ -548,6 +574,27 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
         : allOk
             ? '  •  Webhook delivered'
             : '  •  Webhook failed (ticket saved)';
+
+    await _createAndPrintTicketPdf(
+      ticketNumber: ticketNumber,
+      isInbound: _isInbound,
+      loadNumber: _loadNumberController.text.trim(),
+      location: _location,
+      terminal: _terminal!,
+      entityName: _isInbound ? (_supplier?.name ?? '—') : (_customer?.name ?? '—'),
+      truckInfo:
+          '${_truck?.licensePlate ?? '—'} (${_truck?.description ?? '—'})',
+      driverName: _driver?.name,
+      productInfo: _product != null ? '${_product!.name} (${_product!.category})' : '—',
+      grossWeight: _grossWeight!,
+      tareWeight: _tareWeight!,
+      netWeight: _netWeight!,
+      isSplitLoad: _isSplitLoad,
+      splitWith: _splitLoadNumberController.text.trim(),
+      fromBin: _fromBin,
+      toBin: _toBin,
+      notes: notes,
+    );
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1176,6 +1223,73 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
     return parts.isEmpty ? null : parts.join('\n');
   }
 
+  Future<Uint8List> _buildTicketPdf({
+    required String ticketNumber,
+    required bool isInbound,
+    required String loadNumber,
+    required Location location,
+    required ScaleTerminal terminal,
+    required String entityName,
+    required String truckInfo,
+    required String? driverName,
+    required String productInfo,
+    required double grossWeight,
+    required double tareWeight,
+    required double netWeight,
+    required bool isSplitLoad,
+    String? splitWith,
+    int? fromBin,
+    int? toBin,
+    String? notes,
+  }) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (context) {
+          return pw.Padding(
+            padding: const pw.EdgeInsets.all(24),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('Scale Ticket',
+                    style:
+                        pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                pw.SizedBox(height: 12),
+                pw.Text('Ticket #: $ticketNumber', style: pw.TextStyle(fontSize: 14)),
+                pw.Text('Type: ${isInbound ? 'Inbound' : 'Outbound'}', style: pw.TextStyle(fontSize: 14)),
+                pw.Text('Load #: $loadNumber', style: pw.TextStyle(fontSize: 14)),
+                pw.SizedBox(height: 12),
+                pw.Text('Location: ${location.name}'),
+                pw.Text('Terminal: ${terminal.name}'),
+                pw.Text('Entity: $entityName'),
+                pw.Text('Truck: $truckInfo'),
+                pw.Text('Driver: ${driverName ?? 'N/A'}'),
+                pw.Text('Product: $productInfo'),
+                pw.SizedBox(height: 12),
+                pw.Text('Gross Weight: ${grossWeight.toStringAsFixed(2)}'),
+                pw.Text('Tare Weight: ${tareWeight.toStringAsFixed(2)}'),
+                pw.Text('Net Weight: ${netWeight.toStringAsFixed(2)}'),
+                pw.SizedBox(height: 12),
+                pw.Text('Split Load: ${isSplitLoad ? 'Yes' : 'No'}'),
+                if (isSplitLoad && splitWith != null && splitWith.isNotEmpty) pw.Text('Split With: $splitWith'),
+                if (isSplitLoad && fromBin != null && toBin != null) pw.Text('Bins: $fromBin to $toBin'),
+                pw.SizedBox(height: 12),
+                if (notes != null && notes.isNotEmpty) ...[
+                  pw.Text('Notes:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text(notes),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
   void _parseSplitLoadFromNotes(String notes) {
     final lines = notes.split('\n');
     for (final line in lines) {
@@ -1192,6 +1306,50 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
         }
       }
     }
+  }
+
+  Future<void> _createAndPrintTicketPdf({
+    required String ticketNumber,
+    required bool isInbound,
+    required String loadNumber,
+    required Location location,
+    required ScaleTerminal terminal,
+    required String entityName,
+    required String truckInfo,
+    required String? driverName,
+    required String productInfo,
+    required double grossWeight,
+    required double tareWeight,
+    required double netWeight,
+    required bool isSplitLoad,
+    String? splitWith,
+    int? fromBin,
+    int? toBin,
+    String? notes,
+  }) async {
+    final bytes = await _buildTicketPdf(
+      ticketNumber: ticketNumber,
+      isInbound: isInbound,
+      loadNumber: loadNumber,
+      location: location,
+      terminal: terminal,
+      entityName: entityName,
+      truckInfo: truckInfo,
+      driverName: driverName,
+      productInfo: productInfo,
+      grossWeight: grossWeight,
+      tareWeight: tareWeight,
+      netWeight: netWeight,
+      isSplitLoad: isSplitLoad,
+      splitWith: splitWith,
+      fromBin: fromBin,
+      toBin: toBin,
+      notes: notes,
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (format) async => bytes,
+    );
   }
 
   String _missingFieldsMessage() {

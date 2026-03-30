@@ -30,6 +30,8 @@ dependencies:
   scaleflow_local_db:
     path: ../../packages/local_db
   http: ^1.2.0
+  pdf: ^3.11.0
+  printing: ^5.9.0
 
 dev_dependencies:
   flutter_test:
