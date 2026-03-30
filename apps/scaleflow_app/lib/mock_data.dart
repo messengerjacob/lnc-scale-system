@@ -131,8 +131,11 @@ final mockSalesOrders = [
 // Webhook configs
 // ---------------------------------------------------------------------------
 
-// Update webhookUrl to match your MuleSoft HTTP listener endpoint
-const webhookUrl = 'http://localhost:8081/scale/ticket-completed';
+// Override at build time with: --dart-define=WEBHOOK_URL=https://your-host/scale/ticket-completed
+const webhookUrl = String.fromEnvironment(
+  'WEBHOOK_URL',
+  defaultValue: 'http://localhost:8081/scale/ticket-completed',
+);
 
 final mockWebhookConfigs = [
   WebhookConfig(
