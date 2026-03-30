@@ -13,17 +13,43 @@ class QueueScreen extends StatefulWidget {
 }
 
 class _QueueScreenState extends State<QueueScreen> {
-  List<QueueEntry> get _active =>
-      mockQueue.where((e) => !e.isComplete).toList();
+  ScaleTerminal? _selectedTerminal;
+
+  List<ScaleTerminal> get _terminals => mockTerminals
+      .where((t) => t.locationId == widget.locationId && t.active)
+      .toList();
+
+  // Left panel: entries queued for the selected terminal (not loading/unloading, not complete)
+  List<QueueEntry> get _scaleQueue {
+    if (_selectedTerminal == null) return [];
+    return mockQueue
+        .where((e) =>
+            e.terminalId == _selectedTerminal!.id &&
+            e.status != QueueStatus.loadingUnloading &&
+            !e.isComplete)
+        .toList();
+  }
+
+  // Right panel: all loading/unloading across all terminals
+  List<QueueEntry> get _loadingUnloading =>
+      mockQueue.where((e) => e.status == QueueStatus.loadingUnloading).toList();
 
   List<QueueEntry> get _completed =>
       mockQueue.where((e) => e.isComplete).toList();
 
   @override
+  void initState() {
+    super.initState();
+    final terminals = _terminals;
+    _selectedTerminal = terminals.isNotEmpty ? terminals.first : null;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final active = _active;
+    final terminals = _terminals;
+    final scaleQueue = _scaleQueue;
+    final loadingUnloading = _loadingUnloading;
     final completed = _completed;
-    final isEmpty = active.isEmpty && completed.isEmpty;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F9),
@@ -38,79 +64,58 @@ class _QueueScreenState extends State<QueueScreen> {
           ],
         ),
         actions: [
-          if (active.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${active.length} active',
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Text(
+                '${scaleQueue.length + loadingUnloading.length} active',
+                style: const TextStyle(fontSize: 13, color: Colors.white70),
               ),
             ),
+          ),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          isEmpty
-              ? _EmptyState(onAdd: _showAddSheet)
-              : ListView(
-                  padding: const EdgeInsets.only(
-                      left: 16, right: 16, top: 16, bottom: 88),
-                  children: [
-                    if (active.isNotEmpty) ...[
-                      _SectionLabel(
-                          'Active — ${active.length} truck${active.length == 1 ? '' : 's'}'),
-                      const SizedBox(height: 8),
-                      ...active.asMap().entries.map((e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _QueueCard(
-                              entry: e.value,
-                              position: e.key + 1,
-                              onAction: () => _handleAction(e.value),
-                              onRemove:
-                                  e.value.status == QueueStatus.waitingInLine
-                                      ? () => _removeEntry(e.value)
-                                      : null,
-                            ),
-                          )),
-                    ],
-                    if (completed.isNotEmpty) ...[
-                      if (active.isNotEmpty) const SizedBox(height: 8),
-                      _SectionLabel(
-                          'Completed Today — ${completed.length}'),
-                      const SizedBox(height: 8),
-                      ...completed.map((e) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _QueueCard(
-                              entry: e,
-                              position: null,
-                              onAction: null,
-                              onRemove: null,
-                            ),
-                          )),
-                    ],
-                  ],
+          // Scale selector — only shown when there are multiple terminals
+          if (terminals.length > 1)
+            _ScaleSelectorBar(
+              terminals: terminals,
+              selected: _selectedTerminal,
+              onSelect: (t) => setState(() => _selectedTerminal = t),
+            ),
+
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ── Left panel: scale queue ───────────────────────────────
+                Expanded(
+                  flex: 3,
+                  child: _ScaleQueuePanel(
+                    terminal: _selectedTerminal,
+                    entries: scaleQueue,
+                    multipleScales: terminals.length > 1,
+                    onSendToScale: _sendToScale,
+                    onMoveScale: _moveScale,
+                    onRemove: _removeEntry,
+                    onAddTruck: _showAddSheet,
+                  ),
                 ),
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: FloatingActionButton.extended(
-              heroTag: 'fab_queue',
-              backgroundColor: const Color(0xFF37474F),
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text('Add Truck'),
-              onPressed: _showAddSheet,
+
+                Container(width: 1, color: const Color(0xFFE0E0E0)),
+
+                // ── Right panel: loading / unloading ──────────────────────
+                Expanded(
+                  flex: 2,
+                  child: _LoadingUnloadingPanel(
+                    entries: loadingUnloading,
+                    completed: completed,
+                    terminals: terminals,
+                    onGetBackInLine: _getBackInLine,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -118,41 +123,58 @@ class _QueueScreenState extends State<QueueScreen> {
     );
   }
 
-  void _handleAction(QueueEntry entry) {
-    switch (entry.status) {
-      case QueueStatus.waitingInLine:
-        _openFirstWeigh(entry);
-      case QueueStatus.loadingUnloading:
-        _openSecondWeigh(entry);
-      default:
-        break;
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
+  void _sendToScale(QueueEntry entry) {
+    final isSecond = entry.ticketId != null;
+    setState(() {
+      entry.status =
+          isSecond ? QueueStatus.secondWeighing : QueueStatus.weighing;
+    });
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WeighTicketScreen(
+          direction: entry.direction,
+          queueEntry: entry,
+        ),
+      ),
+    ).then((_) => setState(() {}));
+  }
+
+  void _getBackInLine(QueueEntry entry) {
+    final terminals = _terminals;
+    if (terminals.length <= 1) {
+      setState(() {
+        entry.terminalId = terminals.isNotEmpty ? terminals.first.id : entry.terminalId;
+        entry.status = QueueStatus.waitingInLine;
+      });
+    } else {
+      _showScalePicker(
+        title: 'Get Back in Line',
+        subtitle: 'Select which scale to queue for',
+        terminals: terminals,
+        onSelect: (t) => setState(() {
+          entry.terminalId = t.id;
+          entry.status = QueueStatus.waitingInLine;
+          _selectedTerminal = t;
+        }),
+      );
     }
   }
 
-  void _openFirstWeigh(QueueEntry entry) {
-    setState(() => entry.status = QueueStatus.weighing);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WeighTicketScreen(
-          direction: entry.direction,
-          queueEntry: entry,
-        ),
-      ),
-    ).then((_) => setState(() {}));
-  }
-
-  void _openSecondWeigh(QueueEntry entry) {
-    setState(() => entry.status = QueueStatus.secondWeighing);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => WeighTicketScreen(
-          direction: entry.direction,
-          queueEntry: entry,
-        ),
-      ),
-    ).then((_) => setState(() {}));
+  void _moveScale(QueueEntry entry) {
+    final others =
+        _terminals.where((t) => t.id != entry.terminalId).toList();
+    if (others.isEmpty) return;
+    _showScalePicker(
+      title: 'Move to Different Scale',
+      subtitle: 'Choose a scale to move this truck to',
+      terminals: others,
+      onSelect: (t) => setState(() => entry.terminalId = t.id),
+    );
   }
 
   void _removeEntry(QueueEntry entry) {
@@ -177,6 +199,51 @@ class _QueueScreenState extends State<QueueScreen> {
     );
   }
 
+  void _showScalePicker({
+    required String title,
+    required String subtitle,
+    required List<ScaleTerminal> terminals,
+    required void Function(ScaleTerminal) onSelect,
+  }) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text(title),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(subtitle,
+                style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+          ),
+          ...terminals.map((t) => SimpleDialogOption(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  onSelect(t);
+                },
+                child: Row(
+                  children: [
+                    const Icon(Icons.scale_rounded,
+                        size: 18, color: Color(0xFF37474F)),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(t.name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14)),
+                        Text(t.terminalId,
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.grey[500])),
+                      ],
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
   void _showAddSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -184,217 +251,254 @@ class _QueueScreenState extends State<QueueScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => _AddToQueueSheet(
         locationId: widget.locationId,
+        terminals: _terminals,
+        initialTerminal: _selectedTerminal,
         onAdded: () => setState(() {}),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Queue card
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Scale selector bar
+// =============================================================================
 
-class _QueueCard extends StatelessWidget {
-  const _QueueCard({
-    required this.entry,
-    required this.position,
-    required this.onAction,
-    required this.onRemove,
+class _ScaleSelectorBar extends StatelessWidget {
+  const _ScaleSelectorBar({
+    required this.terminals,
+    required this.selected,
+    required this.onSelect,
   });
 
-  final QueueEntry entry;
-  final int? position;
-  final VoidCallback? onAction;
-  final VoidCallback? onRemove;
-
-  Color get _statusColor => switch (entry.status) {
-        QueueStatus.waitingInLine => const Color(0xFF6B7280),
-        QueueStatus.weighing => const Color(0xFF1565C0),
-        QueueStatus.loadingUnloading => const Color(0xFFE65100),
-        QueueStatus.secondWeighing => const Color(0xFF6A1B9A),
-        QueueStatus.complete => const Color(0xFF2E7D32),
-      };
-
-  String get _actionLabel => switch (entry.status) {
-        QueueStatus.waitingInLine => 'Send to Scale',
-        QueueStatus.loadingUnloading => '2nd Weigh',
-        _ => '',
-      };
+  final List<ScaleTerminal> terminals;
+  final ScaleTerminal? selected;
+  final void Function(ScaleTerminal) onSelect;
 
   @override
   Widget build(BuildContext context) {
-    final supplier =
-        entry.supplierId != null ? supplierById(entry.supplierId!) : null;
-    final customer =
-        entry.customerId != null ? customerById(entry.customerId!) : null;
-    final truck = entry.truckId != null ? truckById(entry.truckId!) : null;
-    final entityName = supplier?.name ?? customer?.name ?? '—';
-
-    final elapsed = DateTime.now().difference(entry.enteredAt);
-    final elapsedStr = elapsed.inMinutes < 60
-        ? '${elapsed.inMinutes}m'
-        : '${elapsed.inHours}h ${elapsed.inMinutes % 60}m';
-
-    return Material(
+    return Container(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 0,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Position badge
-              _PositionBadge(position: position, color: _statusColor),
-              const SizedBox(width: 12),
-
-              // Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Load number + direction pill + status chip
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          entry.loadNumber,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 14),
-                        ),
-                        _DirectionPill(direction: entry.direction),
-                        _StatusChip(status: entry.status),
-                      ],
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          const Text(
+            'SCALE:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF6B7280),
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(width: 12),
+          ...terminals.map((t) {
+            final isSelected = selected?.id == t.id;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => onSelect(t),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF37474F)
+                        : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF37474F)
+                          : const Color(0xFFDDE1E7),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      entityName,
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    if (truck != null) ...[
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Icon(Icons.local_shipping_rounded,
-                              size: 12, color: Colors.grey[400]),
-                          const SizedBox(width: 4),
-                          Text(
-                            truck.licensePlate,
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey[500]),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (entry.ticketNumber != null) ...[
-                      const SizedBox(height: 2),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.scale_rounded,
+                          size: 14,
+                          color: isSelected ? Colors.white : Colors.grey[500]),
+                      const SizedBox(width: 6),
                       Text(
-                        entry.ticketNumber!,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF6B7280),
-                          fontFamily: 'monospace',
-                          letterSpacing: 0.5,
+                        t.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: isSelected ? Colors.white : Colors.grey[600],
                         ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
               ),
-
-              // Right side: elapsed + action
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    elapsedStr,
-                    style: TextStyle(fontSize: 11, color: Colors.grey[400]),
-                  ),
-                  const SizedBox(height: 8),
-                  if (onAction != null)
-                    ElevatedButton(
-                      onPressed: onAction,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _statusColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6)),
-                        elevation: 0,
-                      ),
-                      child: Text(_actionLabel,
-                          style: const TextStyle(fontSize: 12)),
-                    ),
-                  if (onRemove != null) ...[
-                    const SizedBox(height: 6),
-                    GestureDetector(
-                      onTap: onRemove,
-                      child: Text(
-                        'Remove',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.red[300],
-                            decoration: TextDecoration.underline),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-        ),
+            );
+          }),
+        ],
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Direction pill — the inbound/outbound indicator on each card
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Left panel — scale queue
+// =============================================================================
 
-class _DirectionPill extends StatelessWidget {
-  const _DirectionPill({required this.direction});
+class _ScaleQueuePanel extends StatelessWidget {
+  const _ScaleQueuePanel({
+    required this.terminal,
+    required this.entries,
+    required this.multipleScales,
+    required this.onSendToScale,
+    required this.onMoveScale,
+    required this.onRemove,
+    required this.onAddTruck,
+  });
 
-  final TicketDirection direction;
+  final ScaleTerminal? terminal;
+  final List<QueueEntry> entries;
+  final bool multipleScales;
+  final void Function(QueueEntry) onSendToScale;
+  final void Function(QueueEntry) onMoveScale;
+  final void Function(QueueEntry) onRemove;
+  final VoidCallback onAddTruck;
 
-  bool get _isInbound => direction == TicketDirection.inbound;
+  int _waitingCount() =>
+      entries.where((e) => e.status == QueueStatus.waitingInLine).length;
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        _isInbound ? const Color(0xFF1565C0) : const Color(0xFF2E7D32);
-    final icon = _isInbound
-        ? Icons.arrow_downward_rounded
-        : Icons.arrow_upward_rounded;
-    final label = _isInbound ? 'Inbound' : 'Outbound';
+    return Column(
+      children: [
+        // Panel header
+        _PanelHeader(
+          icon: Icons.queue_rounded,
+          color: const Color(0xFF37474F),
+          title: terminal?.name ?? 'No Scale Selected',
+          trailing: entries.isEmpty
+              ? null
+              : '${_waitingCount()} waiting',
+        ),
 
+        // Entry list
+        Expanded(
+          child: entries.isEmpty
+              ? _QueueEmptyState(
+                  enabled: terminal != null, onAdd: onAddTruck)
+              : ListView.separated(
+                  padding:
+                      const EdgeInsets.fromLTRB(12, 12, 12, 80),
+                  itemCount: entries.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final entry = entries[i];
+                    final waitingList = entries
+                        .where((e) =>
+                            e.status == QueueStatus.waitingInLine)
+                        .toList();
+                    final position =
+                        entry.status == QueueStatus.waitingInLine
+                            ? waitingList.indexOf(entry) + 1
+                            : null;
+                    return _QueueLineCard(
+                      entry: entry,
+                      position: position,
+                      onSendToScale: entry.status == QueueStatus.waitingInLine
+                          ? () => onSendToScale(entry)
+                          : null,
+                      onMoveScale: multipleScales &&
+                              entry.status == QueueStatus.waitingInLine
+                          ? () => onMoveScale(entry)
+                          : null,
+                      onRemove: entry.status == QueueStatus.waitingInLine
+                          ? () => onRemove(entry)
+                          : null,
+                    );
+                  },
+                ),
+        ),
+
+        // Add truck footer button
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: terminal != null ? onAddTruck : null,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Truck'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// Right panel — loading / unloading
+// =============================================================================
+
+class _LoadingUnloadingPanel extends StatelessWidget {
+  const _LoadingUnloadingPanel({
+    required this.entries,
+    required this.completed,
+    required this.terminals,
+    required this.onGetBackInLine,
+  });
+
+  final List<QueueEntry> entries;
+  final List<QueueEntry> completed;
+  final List<ScaleTerminal> terminals;
+  final void Function(QueueEntry) onGetBackInLine;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      color: const Color(0xFFFAFAFA),
+      child: Column(
         children: [
-          Icon(icon, size: 10, color: color),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-                fontSize: 10, color: color, fontWeight: FontWeight.w600),
+          _PanelHeader(
+            icon: Icons.local_shipping_rounded,
+            color: const Color(0xFFE65100),
+            title: 'Loading / Unloading',
+            trailing: entries.isEmpty ? null : '${entries.length}',
+          ),
+
+          Expanded(
+            child: entries.isEmpty && completed.isEmpty
+                ? const _LoadingEmptyState()
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+                    children: [
+                      ...entries.map((e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _LoadingCard(
+                              entry: e,
+                              onGetBackInLine: () => onGetBackInLine(e),
+                            ),
+                          )),
+                      if (completed.isNotEmpty) ...[
+                        if (entries.isNotEmpty) const SizedBox(height: 8),
+                        const _SectionLabel('Completed Today'),
+                        const SizedBox(height: 8),
+                        ...completed.map((e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _CompletedCard(entry: e),
+                            )),
+                      ],
+                    ],
+                  ),
           ),
         ],
       ),
@@ -402,46 +506,370 @@ class _DirectionPill extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Position badge
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Cards
+// =============================================================================
 
-class _PositionBadge extends StatelessWidget {
-  const _PositionBadge({required this.position, required this.color});
+/// Card shown in the left (scale queue) panel.
+class _QueueLineCard extends StatelessWidget {
+  const _QueueLineCard({
+    required this.entry,
+    required this.position,
+    required this.onSendToScale,
+    required this.onMoveScale,
+    required this.onRemove,
+  });
 
-  final int? position;
-  final Color color;
+  final QueueEntry entry;
+  final int? position; // null = currently on scale
+  final VoidCallback? onSendToScale;
+  final VoidCallback? onMoveScale;
+  final VoidCallback? onRemove;
+
+  bool get _onScale =>
+      entry.status == QueueStatus.weighing ||
+      entry.status == QueueStatus.secondWeighing;
+
+  String get _actionLabel =>
+      entry.ticketId != null ? '2nd Weigh' : 'Send to Scale';
 
   @override
   Widget build(BuildContext context) {
-    if (position == null) {
-      return Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-        ),
-        child: const Center(
-          child:
-              Icon(Icons.check_rounded, size: 18, color: Color(0xFF2E7D32)),
-        ),
-      );
-    }
+    final supplier =
+        entry.supplierId != null ? supplierById(entry.supplierId!) : null;
+    final customer =
+        entry.customerId != null ? customerById(entry.customerId!) : null;
+    final truck =
+        entry.truckId != null ? truckById(entry.truckId!) : null;
+    final entityName = supplier?.name ?? customer?.name ?? '—';
+
+    final elapsed = DateTime.now().difference(entry.enteredAt);
+    final elapsedStr = elapsed.inMinutes < 60
+        ? '${elapsed.inMinutes}m'
+        : '${elapsed.inHours}h ${elapsed.inMinutes % 60}m';
+
     return Container(
-      width: 36,
-      height: 36,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: _onScale
+            ? const Color(0xFFF0F4FF)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: _onScale
+              ? const Color(0xFF1565C0).withValues(alpha: 0.3)
+              : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Position badge or "on scale" indicator
+            _onScale
+                ? _OnScaleBadge(isSecond: entry.status == QueueStatus.secondWeighing)
+                : _PositionBadge(position: position!),
+
+            const SizedBox(width: 10),
+
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 5,
+                    runSpacing: 3,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(entry.loadNumber,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 13)),
+                      _DirectionPill(direction: entry.direction),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(entityName,
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey[600])),
+                  if (truck != null) ...[
+                    const SizedBox(height: 2),
+                    Row(children: [
+                      Icon(Icons.local_shipping_rounded,
+                          size: 11, color: Colors.grey[400]),
+                      const SizedBox(width: 3),
+                      Text(truck.licensePlate,
+                          style: TextStyle(
+                              fontSize: 11, color: Colors.grey[500])),
+                    ]),
+                  ],
+                  if (entry.ticketNumber != null) ...[
+                    const SizedBox(height: 2),
+                    Text(entry.ticketNumber!,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF6B7280),
+                          fontFamily: 'monospace',
+                        )),
+                  ],
+                ],
+              ),
+            ),
+
+            // Right: time + action + overflow menu
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(elapsedStr,
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey[400])),
+                    if (onMoveScale != null || onRemove != null)
+                      _OverflowMenu(
+                          onMoveScale: onMoveScale, onRemove: onRemove),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (!_onScale && onSendToScale != null)
+                  ElevatedButton(
+                    onPressed: onSendToScale,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: entry.ticketId != null
+                          ? const Color(0xFF6A1B9A)
+                          : const Color(0xFF37474F),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6)),
+                      elevation: 0,
+                    ),
+                    child: Text(_actionLabel,
+                        style: const TextStyle(fontSize: 12)),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Card shown in the right (loading / unloading) panel.
+class _LoadingCard extends StatelessWidget {
+  const _LoadingCard({
+    required this.entry,
+    required this.onGetBackInLine,
+  });
+
+  final QueueEntry entry;
+  final VoidCallback onGetBackInLine;
+
+  @override
+  Widget build(BuildContext context) {
+    final supplier =
+        entry.supplierId != null ? supplierById(entry.supplierId!) : null;
+    final customer =
+        entry.customerId != null ? customerById(entry.customerId!) : null;
+    final truck =
+        entry.truckId != null ? truckById(entry.truckId!) : null;
+    final entityName = supplier?.name ?? customer?.name ?? '—';
+
+    final elapsed = entry.firstWeighAt != null
+        ? DateTime.now().difference(entry.firstWeighAt!)
+        : DateTime.now().difference(entry.enteredAt);
+    final elapsedStr = elapsed.inMinutes < 60
+        ? '${elapsed.inMinutes}m ago'
+        : '${elapsed.inHours}h ${elapsed.inMinutes % 60}m ago';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        // Subtle left accent
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE65100).withValues(alpha: 0.15),
+            blurRadius: 0,
+            offset: const Offset(-3, 0),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 3,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(entry.loadNumber,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 13)),
+                          _DirectionPill(direction: entry.direction),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(entityName,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey[600])),
+                      if (truck != null) ...[
+                        const SizedBox(height: 2),
+                        Row(children: [
+                          Icon(Icons.local_shipping_rounded,
+                              size: 11, color: Colors.grey[400]),
+                          const SizedBox(width: 3),
+                          Text(truck.licensePlate,
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[500])),
+                        ]),
+                      ],
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(elapsedStr,
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey[400])),
+                    if (entry.ticketNumber != null) ...[
+                      const SizedBox(height: 2),
+                      Text(entry.ticketNumber!,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF6B7280),
+                            fontFamily: 'monospace',
+                          )),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onGetBackInLine,
+                icon: const Icon(Icons.keyboard_return_rounded, size: 15),
+                label: const Text('Get Back in Line',
+                    style: TextStyle(fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE65100),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6)),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact completed card for the bottom of the right panel.
+class _CompletedCard extends StatelessWidget {
+  const _CompletedCard({required this.entry});
+
+  final QueueEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final supplier =
+        entry.supplierId != null ? supplierById(entry.supplierId!) : null;
+    final customer =
+        entry.customerId != null ? customerById(entry.customerId!) : null;
+    final entityName = supplier?.name ?? customer?.name ?? '—';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_rounded,
+              size: 16, color: Color(0xFF2E7D32)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(entry.loadNumber,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 12)),
+                    const SizedBox(width: 5),
+                    _DirectionPill(direction: entry.direction),
+                  ],
+                ),
+                Text(entityName,
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+              ],
+            ),
+          ),
+          if (entry.ticketNumber != null)
+            Text(entry.ticketNumber!,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFF6B7280),
+                  fontFamily: 'monospace',
+                )),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Small indicator widgets
+// =============================================================================
+
+class _PositionBadge extends StatelessWidget {
+  const _PositionBadge({required this.position});
+
+  final int position;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: const Color(0xFF37474F).withValues(alpha: 0.08),
         shape: BoxShape.circle,
       ),
       child: Center(
         child: Text(
           '#$position',
-          style: TextStyle(
-            fontSize: 12,
+          style: const TextStyle(
+            fontSize: 11,
             fontWeight: FontWeight.bold,
-            color: color,
+            color: Color(0xFF37474F),
           ),
         ),
       ),
@@ -449,44 +877,212 @@ class _PositionBadge extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Status chip
-// ---------------------------------------------------------------------------
+class _OnScaleBadge extends StatelessWidget {
+  const _OnScaleBadge({required this.isSecond});
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final QueueStatus status;
-
-  Color get _color => switch (status) {
-        QueueStatus.waitingInLine => const Color(0xFF6B7280),
-        QueueStatus.weighing => const Color(0xFF1565C0),
-        QueueStatus.loadingUnloading => const Color(0xFFE65100),
-        QueueStatus.secondWeighing => const Color(0xFF6A1B9A),
-        QueueStatus.complete => const Color(0xFF2E7D32),
-      };
+  final bool isSecond;
 
   @override
   Widget build(BuildContext context) {
+    final color = isSecond ? const Color(0xFF6A1B9A) : const Color(0xFF1565C0);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
-        color: _color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _color.withValues(alpha: 0.3)),
+        color: color.withValues(alpha: 0.1),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
-      child: Text(
-        status.label,
-        style: TextStyle(
-            fontSize: 10, color: _color, fontWeight: FontWeight.w600),
+      child: Center(
+        child: Icon(Icons.scale_rounded, size: 16, color: color),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Section label
-// ---------------------------------------------------------------------------
+class _DirectionPill extends StatelessWidget {
+  const _DirectionPill({required this.direction});
+
+  final TicketDirection direction;
+
+  @override
+  Widget build(BuildContext context) {
+    final isInbound = direction == TicketDirection.inbound;
+    final color =
+        isInbound ? const Color(0xFF1565C0) : const Color(0xFF2E7D32);
+    final icon =
+        isInbound ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 9, color: color),
+          const SizedBox(width: 3),
+          Text(
+            isInbound ? 'IN' : 'OUT',
+            style: TextStyle(
+                fontSize: 9, color: color, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverflowMenu extends StatelessWidget {
+  const _OverflowMenu({required this.onMoveScale, required this.onRemove});
+
+  final VoidCallback? onMoveScale;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert, size: 16, color: Colors.grey[400]),
+      padding: EdgeInsets.zero,
+      itemBuilder: (_) => [
+        if (onMoveScale != null)
+          const PopupMenuItem(
+            value: 'move',
+            child: Row(children: [
+              Icon(Icons.compare_arrows_rounded, size: 16),
+              SizedBox(width: 8),
+              Text('Move to Different Scale'),
+            ]),
+          ),
+        if (onRemove != null)
+          const PopupMenuItem(
+            value: 'remove',
+            child: Row(children: [
+              Icon(Icons.remove_circle_outline,
+                  size: 16, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Remove from Queue',
+                  style: TextStyle(color: Colors.red)),
+            ]),
+          ),
+      ],
+      onSelected: (v) {
+        if (v == 'move') onMoveScale?.call();
+        if (v == 'remove') onRemove?.call();
+      },
+    );
+  }
+}
+
+// =============================================================================
+// Empty states
+// =============================================================================
+
+class _QueueEmptyState extends StatelessWidget {
+  const _QueueEmptyState({required this.enabled, required this.onAdd});
+
+  final bool enabled;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.queue_rounded, size: 40, color: Colors.grey[300]),
+          const SizedBox(height: 12),
+          Text(
+            enabled ? 'Queue is empty' : 'Select a scale above',
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+          ),
+          if (enabled) ...[
+            const SizedBox(height: 6),
+            TextButton.icon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add a truck'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadingEmptyState extends StatelessWidget {
+  const _LoadingEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.local_shipping_outlined,
+              size: 40, color: Colors.grey[300]),
+          const SizedBox(height: 12),
+          Text(
+            'No trucks loading or unloading',
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Shared layout helpers
+// =============================================================================
+
+class _PanelHeader extends StatelessWidget {
+  const _PanelHeader({
+    required this.icon,
+    required this.color,
+    required this.title,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+      color: Colors.white,
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              title.toUpperCase(),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: color,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(trailing!,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: color,
+                    fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
 
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel(this.text);
@@ -498,58 +1094,30 @@ class _SectionLabel extends StatelessWidget {
     return Text(
       text.toUpperCase(),
       style: const TextStyle(
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: FontWeight.bold,
-        color: Color(0xFF6B7280),
+        color: Color(0xFF9CA3AF),
         letterSpacing: 1.2,
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onAdd});
-
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.queue_rounded, size: 56, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text(
-            'No trucks in queue',
-            style: TextStyle(fontSize: 16, color: Colors.grey[500]),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Tap "Add Truck" to place a truck in line',
-            style: TextStyle(fontSize: 13, color: Colors.grey[400]),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Add-to-queue bottom sheet
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Add-to-queue sheet
+// =============================================================================
 
 class _AddToQueueSheet extends StatefulWidget {
   const _AddToQueueSheet({
     required this.locationId,
+    required this.terminals,
+    required this.initialTerminal,
     required this.onAdded,
   });
 
   final int locationId;
+  final List<ScaleTerminal> terminals;
+  final ScaleTerminal? initialTerminal;
   final VoidCallback onAdded;
 
   @override
@@ -558,6 +1126,7 @@ class _AddToQueueSheet extends StatefulWidget {
 
 class _AddToQueueSheetState extends State<_AddToQueueSheet> {
   TicketDirection _direction = TicketDirection.inbound;
+  late ScaleTerminal? _terminal;
   final _loadController = TextEditingController();
 
   PurchaseOrderRef? _resolvedPo;
@@ -567,6 +1136,12 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
   String? _orderNumber;
 
   bool get _isInbound => _direction == TicketDirection.inbound;
+
+  @override
+  void initState() {
+    super.initState();
+    _terminal = widget.initialTerminal;
+  }
 
   @override
   void dispose() {
@@ -600,7 +1175,8 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
         _resolvedPo = po;
         _resolvedSo = null;
         _loadResolved = po != null;
-        _entityName = po != null ? supplierById(po.supplierId)?.name : null;
+        _entityName =
+            po != null ? supplierById(po.supplierId)?.name : null;
         _orderNumber = po?.poNumber;
       });
     } else {
@@ -614,17 +1190,21 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
         _resolvedSo = so;
         _resolvedPo = null;
         _loadResolved = so != null;
-        _entityName = so != null ? customerById(so.customerId)?.name : null;
+        _entityName =
+            so != null ? customerById(so.customerId)?.name : null;
         _orderNumber = so?.soNumber;
       });
     }
   }
 
+  bool get _canAdd => _loadResolved && _terminal != null;
+
   void _addToQueue() {
-    final entry = QueueEntry(
+    mockQueue.add(QueueEntry(
       id: nextQueueId(),
       loadNumber: _loadController.text.trim(),
       direction: _direction,
+      terminalId: _terminal!.id,
       supplierId: _resolvedPo?.supplierId,
       customerId: _resolvedSo?.customerId,
       productId: _resolvedPo?.productId ?? _resolvedSo?.productId,
@@ -632,8 +1212,7 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
       soRefId: _resolvedSo?.id,
       locationId: widget.locationId,
       enteredAt: DateTime.now(),
-    );
-    mockQueue.add(entry);
+    ));
     widget.onAdded();
     Navigator.pop(context);
   }
@@ -663,21 +1242,13 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Direction toggle
-            const Text(
-              'DIRECTION',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF6B7280),
-                letterSpacing: 1.2,
-              ),
-            ),
+            // Direction
+            _SheetLabel('Direction'),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                  child: _DirectionToggleButton(
+                  child: _ToggleButton(
                     label: 'Inbound',
                     icon: Icons.arrow_downward_rounded,
                     color: const Color(0xFF1565C0),
@@ -687,28 +1258,77 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: _DirectionToggleButton(
+                  child: _ToggleButton(
                     label: 'Outbound',
                     icon: Icons.arrow_upward_rounded,
                     color: const Color(0xFF2E7D32),
                     selected: !_isInbound,
-                    onTap: () => _switchDirection(TicketDirection.outbound),
+                    onTap: () =>
+                        _switchDirection(TicketDirection.outbound),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
 
-            // Load number
-            const Text(
-              'LOAD NUMBER',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF6B7280),
-                letterSpacing: 1.2,
+            // Scale — only shown when there are multiple terminals
+            if (widget.terminals.length > 1) ...[
+              const SizedBox(height: 14),
+              _SheetLabel('Scale'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.terminals.map((t) {
+                  final sel = _terminal?.id == t.id;
+                  return GestureDetector(
+                    onTap: () => setState(() => _terminal = t),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? const Color(0xFF37474F).withValues(alpha: 0.1)
+                            : const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: sel
+                              ? const Color(0xFF37474F)
+                              : const Color(0xFFDDE1E7),
+                          width: sel ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.scale_rounded,
+                              size: 14,
+                              color: sel
+                                  ? const Color(0xFF37474F)
+                                  : Colors.grey[400]),
+                          const SizedBox(width: 6),
+                          Text(
+                            t.name,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: sel
+                                  ? FontWeight.w600
+                                  : FontWeight.normal,
+                              color: sel
+                                  ? const Color(0xFF37474F)
+                                  : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-            ),
+            ],
+
+            const SizedBox(height: 14),
+            _SheetLabel('Load Number'),
             const SizedBox(height: 8),
             TextField(
               controller: _loadController,
@@ -723,7 +1343,8 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
                         _loadResolved
                             ? Icons.check_circle
                             : Icons.error_outline,
-                        color: _loadResolved ? Colors.green : Colors.orange,
+                        color:
+                            _loadResolved ? Colors.green : Colors.orange,
                       )
                     : null,
                 filled: true,
@@ -734,7 +1355,7 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             AnimatedSize(
               duration: const Duration(milliseconds: 200),
               child: _loadController.text.isEmpty
@@ -751,11 +1372,11 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
                           entityName: '',
                         ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _loadResolved ? _addToQueue : null,
+                onPressed: _canAdd ? _addToQueue : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: accentColor,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -773,8 +1394,27 @@ class _AddToQueueSheetState extends State<_AddToQueueSheet> {
   }
 }
 
-class _DirectionToggleButton extends StatelessWidget {
-  const _DirectionToggleButton({
+class _SheetLabel extends StatelessWidget {
+  const _SheetLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF6B7280),
+        letterSpacing: 1.2,
+      ),
+    );
+  }
+}
+
+class _ToggleButton extends StatelessWidget {
+  const _ToggleButton({
     required this.label,
     required this.icon,
     required this.color,
@@ -794,9 +1434,11 @@ class _DirectionToggleButton extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 11),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.1) : const Color(0xFFF3F4F6),
+          color: selected
+              ? color.withValues(alpha: 0.1)
+              : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: selected ? color : const Color(0xFFDDE1E7),
@@ -807,7 +1449,8 @@ class _DirectionToggleButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon,
-                size: 16, color: selected ? color : Colors.grey[400]),
+                size: 15,
+                color: selected ? color : Colors.grey[400]),
             const SizedBox(width: 6),
             Text(
               label,
@@ -825,10 +1468,6 @@ class _DirectionToggleButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Resolution banner
-// ---------------------------------------------------------------------------
-
 class _ResolutionBanner extends StatelessWidget {
   const _ResolutionBanner({
     required this.resolved,
@@ -844,7 +1483,8 @@ class _ResolutionBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     if (resolved) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.green.shade50,
           borderRadius: BorderRadius.circular(8),
@@ -872,7 +1512,8 @@ class _ResolutionBanner extends StatelessWidget {
       );
     }
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.orange.shade50,
         borderRadius: BorderRadius.circular(8),
