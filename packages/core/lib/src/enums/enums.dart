@@ -14,6 +14,8 @@ enum SoStatus { open, partial, shipped, cancelled }
 
 enum WebhookMethod { get, post, put, patch }
 
+enum QueueStatus { waitingInLine, weighing, loadingUnloading, secondWeighing, complete }
+
 // --- helpers -----------------------------------------------------------------
 
 extension ConnectionTypeX on ConnectionType {
@@ -45,4 +47,14 @@ extension PoStatusX on PoStatus {
 extension SoStatusX on SoStatus {
   static SoStatus fromString(String v) =>
       SoStatus.values.firstWhere((e) => e.name == v.toLowerCase());
+}
+
+extension QueueStatusX on QueueStatus {
+  String get label => switch (this) {
+        QueueStatus.waitingInLine => 'In Line',
+        QueueStatus.weighing => '1st Weighing',
+        QueueStatus.loadingUnloading => 'Loading / Unloading',
+        QueueStatus.secondWeighing => '2nd Weighing',
+        QueueStatus.complete => 'Complete',
+      };
 }
