@@ -212,6 +212,18 @@ final mockOutboundTickets = <OutboundTicket>[
 ];
 
 // ---------------------------------------------------------------------------
+// Queue (mutable — entries are added and updated at runtime)
+// ---------------------------------------------------------------------------
+
+final mockQueue = <QueueEntry>[];
+
+int _queueIdCounter = 1;
+String nextQueueId() => 'Q-${(_queueIdCounter++).toString().padLeft(4, '0')}';
+
+QueueEntry? queueEntryById(String id) =>
+    mockQueue.where((e) => e.id == id).firstOrNull;
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

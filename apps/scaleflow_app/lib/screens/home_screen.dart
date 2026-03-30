@@ -3,6 +3,7 @@ import 'package:scaleflow_core/scaleflow_core.dart';
 import '../mock_data.dart';
 import 'entity_list_screen.dart';
 import 'login_screen.dart';
+import 'queue_screen.dart';
 import 'tickets_screen.dart';
 import 'weigh_ticket_screen.dart';
 
@@ -18,6 +19,7 @@ class HomeScreen extends StatelessWidget {
     final openOutbound = mockOutboundTickets.where((t) => t.status == TicketStatus.open).length;
     final unsynced = mockInboundTickets.where((t) => !t.synced).length +
         mockOutboundTickets.where((t) => !t.synced).length;
+    final inQueue = mockQueue.where((e) => !e.isComplete).length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F9),
@@ -72,8 +74,24 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(width: 12),
                 _StatCard(label: 'Open Outbound', value: '$openOutbound', icon: Icons.arrow_upward_rounded, color: const Color(0xFF2E7D32)),
                 const SizedBox(width: 12),
+                _StatCard(label: 'In Queue', value: '$inQueue', icon: Icons.queue_rounded, color: inQueue > 0 ? const Color(0xFF37474F) : Colors.grey),
+                const SizedBox(width: 12),
                 _StatCard(label: 'Pending Sync', value: '$unsynced', icon: Icons.cloud_off_rounded, color: unsynced > 0 ? const Color(0xFFE65100) : Colors.grey),
               ],
+            ),
+            const SizedBox(height: 28),
+
+            // --- Scale Queue ---
+            _SectionHeader(label: 'Scale Queue'),
+            const SizedBox(height: 10),
+            _NavCard(
+              title: 'Truck Queue',
+              subtitle: '$inQueue truck${inQueue == 1 ? '' : 's'} active  •  Manage weigh-in / weigh-out',
+              icon: Icons.queue_rounded,
+              color: const Color(0xFF37474F),
+              onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => QueueScreen(locationId: location?.id ?? mockLocations.first.id!),
+              )),
             ),
             const SizedBox(height: 28),
 

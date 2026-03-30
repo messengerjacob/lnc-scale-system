@@ -13,6 +13,7 @@ export 'src/models/purchase_order_ref.dart';
 export 'src/models/sales_order_ref.dart';
 export 'src/models/inbound_ticket.dart';
 export 'src/models/outbound_ticket.dart';
+export 'src/models/queue_entry.dart';
 export 'src/models/outbox.dart';
 export 'src/models/inventory_log.dart';
 export 'src/models/webhook_config.dart';
