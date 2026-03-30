@@ -65,6 +65,17 @@ CREATE TABLE SUPPLIER (
     updated_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
+CREATE TABLE FREIGHT_SUPPLIER (
+    id               INT IDENTITY(1,1) PRIMARY KEY,
+    name             NVARCHAR(150)  NOT NULL,
+    contact_name     NVARCHAR(150)  NULL,
+    phone            NVARCHAR(30)   NULL,
+    email            NVARCHAR(200)  NULL,
+    address          NVARCHAR(300)  NULL,
+    created_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
 CREATE TABLE CUSTOMER (
     id            INT IDENTITY(1,1) PRIMARY KEY,
     name          NVARCHAR(150)  NOT NULL,
@@ -77,15 +88,17 @@ CREATE TABLE CUSTOMER (
 );
 
 CREATE TABLE DRIVER (
-    id              INT IDENTITY(1,1) PRIMARY KEY,
-    name            NVARCHAR(150)  NOT NULL,
-    license_number  NVARCHAR(50)   NULL,
-    phone           NVARCHAR(30)   NULL,
-    email           NVARCHAR(200)  NULL,
+    id                  INT IDENTITY(1,1) PRIMARY KEY,
+    name                NVARCHAR(150)  NOT NULL,
+    license_number      NVARCHAR(50)   NULL,
+    phone               NVARCHAR(30)   NULL,
+    email               NVARCHAR(200)  NULL,
     -- Hashed PIN used by the future mobile app
-    app_pin         NVARCHAR(100)  NULL,
-    created_at      DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
-    updated_at      DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+    app_pin             NVARCHAR(100)  NULL,
+    supplier_id         INT            NULL REFERENCES SUPPLIER(id),
+    freight_supplier_id INT            NULL REFERENCES FREIGHT_SUPPLIER(id),
+    created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 CREATE TABLE TRUCK (
@@ -95,6 +108,8 @@ CREATE TABLE TRUCK (
     tare_weight         DECIMAL(10,3)  NULL,
     tare_unit           NVARCHAR(10)   NULL CHECK (tare_unit IN ('lbs','kg','tons')),
     tare_certified_date DATE           NULL,
+    supplier_id         INT            NULL REFERENCES SUPPLIER(id),
+    freight_supplier_id INT            NULL REFERENCES FREIGHT_SUPPLIER(id),
     created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -148,6 +163,22 @@ CREATE TABLE SALES_ORDER_REF (
     notes             NVARCHAR(MAX)   NULL,
     created_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+-- ---------------------------------------------------------------------------
+-- Users & Security
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE OPERATOR (
+    id               INT IDENTITY(1,1) PRIMARY KEY,
+    username         NVARCHAR(50)    NOT NULL UNIQUE,
+    password_hash    NVARCHAR(255)   NOT NULL,
+    location_id      INT             NULL REFERENCES LOCATION(id),
+    -- 'admin', 'operator', 'viewer'
+    role             NVARCHAR(20)    NOT NULL DEFAULT 'operator'
+                         CHECK (role IN ('admin','operator','viewer')),
+    created_at       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 -- ---------------------------------------------------------------------------
