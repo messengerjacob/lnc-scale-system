@@ -234,6 +234,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 detail: '${mockProducts.length} records',
                 onTap: () => _openProducts(context),
               ),
+              _MenuTile(
+                icon: Icons.local_shipping_outlined,
+                color: const Color(0xFF00838F),
+                title: 'Freight Suppliers',
+                detail: '${mockFreightSuppliers.length} records',
+                onTap: () => _openFreightSuppliers(context),
+              ),
+              _MenuTile(
+                icon: Icons.location_city_rounded,
+                color: const Color(0xFF4527A0),
+                title: 'Locations',
+                detail: '${mockLocations.length} records',
+                onTap: () => _openLocations(context),
+              ),
+              _MenuTile(
+                icon: Icons.scale_rounded,
+                color: const Color(0xFF00695C),
+                title: 'Scales',
+                detail: '${mockTerminals.length} records',
+                onTap: () => _openScales(context),
+              ),
             ]),
             const SizedBox(height: 28),
 
@@ -256,6 +277,20 @@ class _HomeScreenState extends State<HomeScreen> {
               onTap: () => _openSalesOrders(context),
             ),
             const SizedBox(height: 16),
+
+            // --- Administration (admin only) ---
+            if (widget.isAdmin) ...[
+              _SectionHeader(label: 'Administration'),
+              const SizedBox(height: 10),
+              _MenuTile(
+                icon: Icons.manage_accounts_rounded,
+                color: const Color(0xFF37474F),
+                title: 'Operators',
+                detail: '${mockOperators.length} users',
+                onTap: () => _openOperators(context),
+              ),
+              const SizedBox(height: 16),
+            ],
           ],
         ),
       ),
@@ -403,6 +438,88 @@ class _HomeScreenState extends State<HomeScreen> {
             badgeColor: _soStatusColor(so.status),
             leadingIcon: Icons.receipt_rounded,
             leadingColor: const Color(0xFF2E7D32),
+          );
+        }).toList(),
+      ),
+    ));
+  }
+
+  void _openLocations(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => EntityListScreen(
+        title: 'Locations',
+        icon: Icons.location_city_rounded,
+        iconColor: const Color(0xFF4527A0),
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
+        records: mockLocations.map((l) => EntityRecord(
+          title: l.name,
+          subtitle: '${l.address}  •  ${l.city}, ${l.state} ${l.zip}',
+          leadingIcon: Icons.location_city_rounded,
+          leadingColor: const Color(0xFF4527A0),
+        )).toList(),
+      ),
+    ));
+  }
+
+  void _openScales(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => EntityListScreen(
+        title: 'Scales',
+        icon: Icons.scale_rounded,
+        iconColor: const Color(0xFF00695C),
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
+        records: mockTerminals.map((t) => EntityRecord(
+          title: t.name,
+          subtitle: '${t.make} ${t.model}  •  ${locationById(t.locationId)?.name ?? 'Location ${t.locationId}'}',
+          leadingIcon: Icons.scale_rounded,
+          leadingColor: const Color(0xFF00695C),
+        )).toList(),
+      ),
+    ));
+  }
+
+  void _openFreightSuppliers(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => EntityListScreen(
+        title: 'Freight Suppliers',
+        icon: Icons.local_shipping_outlined,
+        iconColor: const Color(0xFF00838F),
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
+        records: mockFreightSuppliers.map((fs) => EntityRecord(
+          title: fs.name,
+          subtitle: '${fs.contactName ?? '—'}  •  ${fs.phone ?? '—'}  •  ${fs.city ?? ''}, ${fs.state ?? ''}',
+          leadingIcon: Icons.local_shipping_outlined,
+          leadingColor: const Color(0xFF00838F),
+        )).toList(),
+      ),
+    ));
+  }
+
+  void _openOperators(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => EntityListScreen(
+        title: 'Operators',
+        icon: Icons.manage_accounts_rounded,
+        iconColor: const Color(0xFF37474F),
+        isAdmin: true,
+        isMerchandiser: false,
+        records: mockOperators.map((op) {
+          final roleLabel = switch (op.role) {
+            'admin' => 'Admin',
+            'merchandiser' => 'Merchandiser',
+            _ => 'Location',
+          };
+          final locationName = op.locationId != null
+              ? locationById(op.locationId!)?.name ?? 'Location ${op.locationId}'
+              : 'All Locations';
+          return EntityRecord(
+            title: op.username,
+            subtitle: '$roleLabel  •  $locationName  •  ${op.active ? 'Active' : 'Inactive'}',
+            leadingIcon: Icons.manage_accounts_rounded,
+            leadingColor: const Color(0xFF37474F),
           );
         }).toList(),
       ),

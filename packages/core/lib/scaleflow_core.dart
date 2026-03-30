@@ -18,3 +18,5 @@ export 'src/models/outbox.dart';
 export 'src/models/inventory_log.dart';
 export 'src/models/webhook_config.dart';
 export 'src/models/webhook_log.dart';
+export 'src/models/freight_supplier.dart';
+export 'src/models/operator.dart';

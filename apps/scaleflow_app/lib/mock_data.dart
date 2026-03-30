@@ -66,6 +66,18 @@ final mockTrucks = [
   const Truck(id: 5, licensePlate: 'IN-TRK-047', description: 'Volvo VNL - Silver', tareWeight: 14600, tareUnit: WeightUnit.lbs),
 ];
 
+final mockFreightSuppliers = [
+  const FreightSupplier(id: 1, name: 'Midwest Freight LLC', contactName: 'John Hauler', phone: '217-555-0601', city: 'Springfield', state: 'IL'),
+  const FreightSupplier(id: 2, name: 'Plains Transport Co.', contactName: 'Lisa Driver', phone: '217-555-0602', city: 'Decatur', state: 'IL'),
+  const FreightSupplier(id: 3, name: 'River Road Carriers', contactName: 'Mike Trucker', phone: '217-555-0603', city: 'Peoria', state: 'IL'),
+];
+
+final mockOperators = [
+  const Operator(id: 1, username: 'admin', role: 'admin'),
+  const Operator(id: 2, username: 'operator', role: 'location', locationId: 1),
+  const Operator(id: 3, username: 'merchandiser', role: 'merchandiser'),
+];
+
 final mockProducts = [
   const Product(id: 1, name: 'Corn #2 Yellow', category: 'Grain', unit: 'bu', currentStock: 142500, minStockAlert: 50000),
   const Product(id: 2, name: 'Soybeans', category: 'Grain', unit: 'bu', currentStock: 88000, minStockAlert: 30000),
