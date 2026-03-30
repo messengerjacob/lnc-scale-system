@@ -176,6 +176,10 @@ CREATE TABLE INBOUND_TICKET (
     -- 'open', 'complete', 'voided'
     status           NVARCHAR(20)    NOT NULL DEFAULT 'open'
                          CHECK (status IN ('open','complete','voided')),
+    is_split_load    BIT             NOT NULL DEFAULT 0,
+    split_with       NVARCHAR(100)   NULL,
+    split_from_bin   TINYINT         NULL CHECK (split_from_bin BETWEEN 1 AND 9),
+    split_to_bin     TINYINT         NULL CHECK (split_to_bin BETWEEN 1 AND 9),
     notes            NVARCHAR(MAX)   NULL,
     -- 0 = pending outbox sync, 1 = successfully synced to cloud
     synced           BIT             NOT NULL DEFAULT 0,
@@ -203,6 +207,10 @@ CREATE TABLE OUTBOUND_TICKET (
     raw_serial_tare  NVARCHAR(200)   NULL,
     status           NVARCHAR(20)    NOT NULL DEFAULT 'open'
                          CHECK (status IN ('open','complete','voided')),
+    is_split_load    BIT             NOT NULL DEFAULT 0,
+    split_with       NVARCHAR(100)   NULL,
+    split_from_bin   TINYINT         NULL CHECK (split_from_bin BETWEEN 1 AND 9),
+    split_to_bin     TINYINT         NULL CHECK (split_to_bin BETWEEN 1 AND 9),
     notes            NVARCHAR(MAX)   NULL,
     synced           BIT             NOT NULL DEFAULT 0,
     created_at       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),

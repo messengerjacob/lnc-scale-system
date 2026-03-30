@@ -54,8 +54,12 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
   SalesOrderRef? _soRef;
   final _loadNumberController = TextEditingController();
   final _notesController = TextEditingController();
+  final _splitLoadNumberController = TextEditingController();
 
   bool _loadResolved = false;
+  bool _isSplitLoad = false;
+  int? _fromBin;
+  int? _toBin;
 
   List<ScaleTerminal> get _terminalsForLocation =>
       mockTerminals.where((t) => t.locationId == _location.id).toList();
@@ -93,6 +97,10 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
           _grossWeight = ticket?.grossWeight;
           // Empty truck comes back — simulate tare weight.
           _baseWeight = _truck?.tareWeight ?? 14200;
+          // Load split load info from notes
+          if (ticket?.notes != null) {
+            _parseSplitLoadFromNotes(ticket!.notes!);
+          }
         } else {
           final ticket = mockOutboundTickets
               .where((t) => t.id == entry.ticketId)
@@ -100,6 +108,10 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
           _tareWeight = ticket?.tareWeight;
           // Full truck comes back — simulate gross weight.
           _baseWeight = 42000;
+          // Load split load info from notes
+          if (ticket?.notes != null) {
+            _parseSplitLoadFromNotes(ticket!.notes!);
+          }
         }
       } else {
         // 1st weigh: inbound = full truck, outbound = empty truck.
@@ -170,6 +182,7 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
     _scaleTimer.cancel();
     _loadNumberController.dispose();
     _notesController.dispose();
+    _splitLoadNumberController.dispose();
     super.dispose();
   }
 
@@ -859,6 +872,122 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 20),
+
+                  _sectionHeader('Split Load'),
+                  if (_isSecondWeigh) ...[
+                    // Show as read-only in second weigh
+                    if (_isSplitLoad) ...[
+                      _LockedField(
+                        icon: Icons.call_split,
+                        value: 'Split Load: Yes',
+                      ),
+                      if (_splitLoadNumberController.text.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _LockedField(
+                          icon: Icons.tag,
+                          value: 'Split With: ${_splitLoadNumberController.text}',
+                        ),
+                      ],
+                      if (_fromBin != null && _toBin != null) ...[
+                        const SizedBox(height: 8),
+                        _LockedField(
+                          icon: Icons.inventory_2,
+                          value: 'Bins: $_fromBin to $_toBin',
+                        ),
+                      ],
+                    ] else ...[
+                      _LockedField(
+                        icon: Icons.call_split,
+                        value: 'Not a split load',
+                      ),
+                    ],
+                  ] else ...[
+                    // Editable in first weigh
+                    CheckboxListTile(
+                      title: const Text('This is a split load'),
+                      value: _isSplitLoad,
+                      onChanged: (value) => setState(() => _isSplitLoad = value ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    if (_isSplitLoad) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _splitLoadNumberController,
+                        decoration: InputDecoration(
+                          labelText: 'Split Load Number (optional)',
+                          hintText: 'e.g. LD-00422',
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFDDE1E7)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFDDE1E7)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              value: _fromBin,
+                              decoration: InputDecoration(
+                                labelText: 'From Bin',
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Color(0xFFDDE1E7)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Color(0xFFDDE1E7)),
+                                ),
+                              ),
+                              items: List.generate(9, (i) => i + 1)
+                                  .map((bin) => DropdownMenuItem(
+                                        value: bin,
+                                        child: Text('Bin $bin'),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) => setState(() => _fromBin = value),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              value: _toBin,
+                              decoration: InputDecoration(
+                                labelText: 'To Bin',
+                                filled: true,
+                                fillColor: Colors.white,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Color(0xFFDDE1E7)),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: Color(0xFFDDE1E7)),
+                                ),
+                              ),
+                              items: List.generate(9, (i) => i + 1)
+                                  .map((bin) => DropdownMenuItem(
+                                        value: bin,
+                                        child: Text('Bin $bin'),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) => setState(() => _toBin = value),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                   const SizedBox(height: 32),
 
                   SizedBox(
@@ -1031,10 +1160,38 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
   String? _buildNotes() {
     final load = _loadNumberController.text.trim();
     final notes = _notesController.text.trim();
-    if (load.isEmpty && notes.isEmpty) return null;
-    if (load.isEmpty) return notes;
-    if (notes.isEmpty) return 'Load: $load';
-    return 'Load: $load\n$notes';
+    final splitLoadNumber = _splitLoadNumberController.text.trim();
+    final parts = <String>[];
+
+    if (load.isNotEmpty) parts.add('Load: $load');
+    if (_isSplitLoad) {
+      parts.add('Split Load: Yes');
+      if (splitLoadNumber.isNotEmpty) parts.add('Split With: $splitLoadNumber');
+      if (_fromBin != null && _toBin != null) {
+        parts.add('Bins: $_fromBin to $_toBin');
+      }
+    }
+    if (notes.isNotEmpty) parts.add(notes);
+
+    return parts.isEmpty ? null : parts.join('\n');
+  }
+
+  void _parseSplitLoadFromNotes(String notes) {
+    final lines = notes.split('\n');
+    for (final line in lines) {
+      if (line.startsWith('Split Load: Yes')) {
+        _isSplitLoad = true;
+      } else if (line.startsWith('Split With: ')) {
+        _splitLoadNumberController.text = line.substring('Split With: '.length);
+      } else if (line.startsWith('Bins: ')) {
+        final binPart = line.substring('Bins: '.length);
+        final binMatch = RegExp(r'(\d+) to (\d+)').firstMatch(binPart);
+        if (binMatch != null) {
+          _fromBin = int.tryParse(binMatch.group(1)!);
+          _toBin = int.tryParse(binMatch.group(2)!);
+        }
+      }
+    }
   }
 
   String _missingFieldsMessage() {
