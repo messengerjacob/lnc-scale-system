@@ -150,6 +150,8 @@ class _QueueScreenState extends State<QueueScreen> {
       setState(() {
         entry.terminalId = terminals.isNotEmpty ? terminals.first.id : entry.terminalId;
         entry.status = QueueStatus.waitingInLine;
+        mockQueue.remove(entry);
+        mockQueue.add(entry);
       });
     } else {
       _showScalePicker(
@@ -159,6 +161,8 @@ class _QueueScreenState extends State<QueueScreen> {
         onSelect: (t) => setState(() {
           entry.terminalId = t.id;
           entry.status = QueueStatus.waitingInLine;
+          mockQueue.remove(entry);
+          mockQueue.add(entry);
           _selectedTerminal = t;
         }),
       );
