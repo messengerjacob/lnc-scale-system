@@ -32,6 +32,7 @@ class EntityListScreen extends StatelessWidget {
     required this.title,
     required this.records,
     required this.isAdmin,
+    this.isMerchandiser = false,
     this.icon,
     this.iconColor,
     this.onAdd,
@@ -41,6 +42,7 @@ class EntityListScreen extends StatelessWidget {
   final String title;
   final List<EntityRecord> records;
   final bool isAdmin;
+  final bool isMerchandiser;
   final IconData? icon;
   final Color? iconColor;
   final VoidCallback? onAdd;
@@ -80,7 +82,7 @@ class EntityListScreen extends StatelessWidget {
           ),
         ],
       ),
-      floatingActionButton: isAdmin
+      floatingActionButton: isAdmin && !isMerchandiser
           ? FloatingActionButton(
               onPressed: onAdd ??
                   () => ScaffoldMessenger.of(context).showSnackBar(

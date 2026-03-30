@@ -346,6 +346,45 @@ CREATE TABLE WEBHOOK_LOG (
 );
 
 -- ---------------------------------------------------------------------------
+-- User management
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE OPERATOR (
+    id                INT IDENTITY(1,1) PRIMARY KEY,
+    username          NVARCHAR(100)   NOT NULL UNIQUE,
+    password_hash     NVARCHAR(255)   NOT NULL,
+    location_id       INT             NULL REFERENCES LOCATION(id),
+    -- 'location', 'admin', 'merchandiser'
+    role              NVARCHAR(20)    NOT NULL CHECK (role IN ('location','admin','merchandiser')),
+    active            BIT             NOT NULL DEFAULT 1,
+    created_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+-- ---------------------------------------------------------------------------
+-- Freight suppliers (separate from commodity suppliers)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE FREIGHT_SUPPLIER (
+    id          INT IDENTITY(1,1) PRIMARY KEY,
+    name        NVARCHAR(150)  NOT NULL,
+    contact_name NVARCHAR(100) NULL,
+    phone       NVARCHAR(30)   NULL,
+    email       NVARCHAR(150) NULL,
+    address     NVARCHAR(255) NULL,
+    city        NVARCHAR(100) NULL,
+    state       NVARCHAR(50)  NULL,
+    zip         NVARCHAR(20)  NULL,
+    active      BIT            NOT NULL DEFAULT 1,
+    created_at  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at  DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+-- Add nullable FKs to TRUCK and DRIVER for freight supplier relationships
+ALTER TABLE TRUCK ADD freight_supplier_id INT NULL REFERENCES FREIGHT_SUPPLIER(id);
+ALTER TABLE DRIVER ADD freight_supplier_id INT NULL REFERENCES FREIGHT_SUPPLIER(id);
+
+-- ---------------------------------------------------------------------------
 -- Indexes — covering the most common query patterns
 -- ---------------------------------------------------------------------------
 

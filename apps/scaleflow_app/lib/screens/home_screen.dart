@@ -7,19 +7,45 @@ import 'queue_screen.dart';
 import 'tickets_screen.dart';
 import 'weigh_ticket_screen.dart';
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, this.location, this.isAdmin = false});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, this.location, this.isAdmin = false, this.isMerchandiser = false});
 
   final Location? location;
   final bool isAdmin;
+  final bool isMerchandiser;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Location? selectedLocation;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isMerchandiser) {
+      selectedLocation = mockLocations.first;
+    } else {
+      selectedLocation = widget.location;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final openInbound = mockInboundTickets.where((t) => t.status == TicketStatus.open).length;
-    final openOutbound = mockOutboundTickets.where((t) => t.status == TicketStatus.open).length;
-    final unsynced = mockInboundTickets.where((t) => !t.synced).length +
-        mockOutboundTickets.where((t) => !t.synced).length;
-    final inQueue = mockQueue.where((e) => !e.isComplete).length;
+    final openInbound = selectedLocation == null
+        ? mockInboundTickets.where((t) => t.status == TicketStatus.open).length
+        : mockInboundTickets.where((t) => t.status == TicketStatus.open && t.locationId == selectedLocation!.id).length;
+    final openOutbound = selectedLocation == null
+        ? mockOutboundTickets.where((t) => t.status == TicketStatus.open).length
+        : mockOutboundTickets.where((t) => t.status == TicketStatus.open && t.locationId == selectedLocation!.id).length;
+    final unsynced = selectedLocation == null
+        ? mockInboundTickets.where((t) => !t.synced).length + mockOutboundTickets.where((t) => !t.synced).length
+        : mockInboundTickets.where((t) => !t.synced && t.locationId == selectedLocation!.id).length +
+          mockOutboundTickets.where((t) => !t.synced && t.locationId == selectedLocation!.id).length;
+    final inQueue = selectedLocation == null
+        ? mockQueue.where((e) => !e.isComplete).length
+        : mockQueue.where((e) => !e.isComplete && e.locationId == selectedLocation!.id).length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F9),
@@ -32,12 +58,26 @@ class HomeScreen extends StatelessWidget {
             padding: const EdgeInsets.only(right: 4),
             child: Row(
               children: [
-                Icon(isAdmin ? Icons.admin_panel_settings_rounded : Icons.location_on, size: 16),
+                Icon(widget.isAdmin ? Icons.admin_panel_settings_rounded : widget.isMerchandiser ? Icons.storefront_rounded : Icons.location_on, size: 16),
                 const SizedBox(width: 4),
-                Text(
-                  isAdmin ? 'Admin' : (location?.name ?? mockLocations.first.name),
-                  style: const TextStyle(fontSize: 14),
-                ),
+                if (widget.isMerchandiser)
+                  DropdownButton<Location>(
+                    value: selectedLocation,
+                    dropdownColor: const Color(0xFF1565C0),
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    underline: const SizedBox(),
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                    items: mockLocations.map((loc) => DropdownMenuItem(
+                      value: loc,
+                      child: Text('${loc.name}  •  ${loc.city}, ${loc.state}'),
+                    )).toList(),
+                    onChanged: (value) => setState(() => selectedLocation = value),
+                  )
+                else
+                  Text(
+                    widget.isAdmin ? 'Admin' : (selectedLocation?.name ?? mockLocations.first.name),
+                    style: const TextStyle(fontSize: 14),
+                  ),
               ],
             ),
           ),
@@ -75,8 +115,10 @@ class HomeScreen extends StatelessWidget {
                 _StatCard(label: 'Open Outbound', value: '$openOutbound', icon: Icons.arrow_upward_rounded, color: const Color(0xFF2E7D32)),
                 const SizedBox(width: 12),
                 _StatCard(label: 'In Queue', value: '$inQueue', icon: Icons.queue_rounded, color: inQueue > 0 ? const Color(0xFF37474F) : Colors.grey),
-                const SizedBox(width: 12),
-                _StatCard(label: 'Pending Sync', value: '$unsynced', icon: Icons.cloud_off_rounded, color: unsynced > 0 ? const Color(0xFFE65100) : Colors.grey),
+                if (!widget.isMerchandiser) ...[
+                  const SizedBox(width: 12),
+                  _StatCard(label: 'Pending Sync', value: '$unsynced', icon: Icons.cloud_off_rounded, color: unsynced > 0 ? const Color(0xFFE65100) : Colors.grey),
+                ],
               ],
             ),
             const SizedBox(height: 28),
@@ -90,42 +132,44 @@ class HomeScreen extends StatelessWidget {
               icon: Icons.queue_rounded,
               color: const Color(0xFF37474F),
               onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => QueueScreen(locationId: location?.id ?? mockLocations.first.id!),
+                builder: (_) => QueueScreen(locationId: selectedLocation?.id ?? mockLocations.first.id!, isMerchandiser: widget.isMerchandiser),
               )),
             ),
             const SizedBox(height: 28),
 
             // --- Weigh Tickets ---
-            _SectionHeader(label: 'Weigh Tickets'),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _NavCard(
-                    title: 'New Inbound',
-                    subtitle: 'Weigh an incoming truck',
-                    icon: Icons.arrow_downward_rounded,
-                    color: const Color(0xFF1565C0),
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const WeighTicketScreen(direction: TicketDirection.inbound),
-                    )),
+            if (!widget.isMerchandiser) ...[
+              _SectionHeader(label: 'Weigh Tickets'),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _NavCard(
+                      title: 'New Inbound',
+                      subtitle: 'Weigh an incoming truck',
+                      icon: Icons.arrow_downward_rounded,
+                      color: const Color(0xFF1565C0),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => const WeighTicketScreen(direction: TicketDirection.inbound),
+                      )),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _NavCard(
-                    title: 'New Outbound',
-                    subtitle: 'Weigh an outgoing truck',
-                    icon: Icons.arrow_upward_rounded,
-                    color: const Color(0xFF2E7D32),
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const WeighTicketScreen(direction: TicketDirection.outbound),
-                    )),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _NavCard(
+                      title: 'New Outbound',
+                      subtitle: 'Weigh an outgoing truck',
+                      icon: Icons.arrow_upward_rounded,
+                      color: const Color(0xFF2E7D32),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => const WeighTicketScreen(direction: TicketDirection.outbound),
+                      )),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 28),
+                ],
+              ),
+              const SizedBox(height: 28),
+            ],
 
             // --- Ticket History ---
             _SectionHeader(label: 'Ticket History'),
@@ -134,9 +178,9 @@ class HomeScreen extends StatelessWidget {
               icon: Icons.arrow_downward_rounded,
               color: const Color(0xFF1565C0),
               title: 'Inbound Tickets',
-              detail: '${mockInboundTickets.length} total  •  $openInbound open',
+              detail: '${selectedLocation == null ? mockInboundTickets.length : mockInboundTickets.where((t) => t.locationId == selectedLocation!.id).length} total  •  $openInbound open',
               onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const TicketsScreen(direction: TicketDirection.inbound),
+                builder: (_) => TicketsScreen(direction: TicketDirection.inbound, locationId: selectedLocation?.id),
               )),
             ),
             const SizedBox(height: 8),
@@ -144,9 +188,9 @@ class HomeScreen extends StatelessWidget {
               icon: Icons.arrow_upward_rounded,
               color: const Color(0xFF2E7D32),
               title: 'Outbound Tickets',
-              detail: '${mockOutboundTickets.length} total  •  $openOutbound open',
+              detail: '${selectedLocation == null ? mockOutboundTickets.length : mockOutboundTickets.where((t) => t.locationId == selectedLocation!.id).length} total  •  $openOutbound open',
               onTap: () => Navigator.push(context, MaterialPageRoute(
-                builder: (_) => const TicketsScreen(direction: TicketDirection.outbound),
+                builder: (_) => TicketsScreen(direction: TicketDirection.outbound, locationId: selectedLocation?.id),
               )),
             ),
             const SizedBox(height: 28),
@@ -228,7 +272,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Suppliers',
         icon: Icons.business_rounded,
         iconColor: const Color(0xFF0277BD),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockSuppliers.map((s) => EntityRecord(
           title: s.name,
           subtitle: '${s.contactName}  •  ${s.phone}  •  ${s.commodityTypes}',
@@ -245,7 +290,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Customers',
         icon: Icons.store_rounded,
         iconColor: const Color(0xFF00695C),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockCustomers.map((c) => EntityRecord(
           title: c.name,
           subtitle: '${c.contactName}  •  ${c.phone}',
@@ -262,7 +308,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Trucks',
         icon: Icons.local_shipping_rounded,
         iconColor: const Color(0xFF558B2F),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockTrucks.map((t) => EntityRecord(
           title: t.licensePlate,
           subtitle: '${t.description}  •  Tare: ${_fmt(t.tareWeight ?? 0)} lbs',
@@ -279,7 +326,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Drivers',
         icon: Icons.badge_rounded,
         iconColor: const Color(0xFF6A1B9A),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockDrivers.map((d) => EntityRecord(
           title: d.name,
           subtitle: '${d.licenseNumber}  •  ${d.phone}',
@@ -296,7 +344,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Products',
         icon: Icons.inventory_2_rounded,
         iconColor: const Color(0xFFE65100),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockProducts.map((p) {
           final low = p.currentStock < (p.minStockAlert ?? 0);
           return EntityRecord(
@@ -318,7 +367,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Purchase Orders',
         icon: Icons.receipt_long_rounded,
         iconColor: const Color(0xFF1565C0),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockPurchaseOrders.map((po) {
           final supplier = supplierById(po.supplierId);
           final product = productById(po.productId);
@@ -341,7 +391,8 @@ class HomeScreen extends StatelessWidget {
         title: 'Sales Orders',
         icon: Icons.receipt_rounded,
         iconColor: const Color(0xFF2E7D32),
-        isAdmin: isAdmin,
+        isAdmin: widget.isAdmin,
+        isMerchandiser: widget.isMerchandiser,
         records: mockSalesOrders.map((so) {
           final customer = customerById(so.customerId);
           final product = productById(so.productId);
