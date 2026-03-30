@@ -1,7 +1,71 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 import 'package:scaleflow_core/scaleflow_core.dart';
 import '../mock_data.dart';
 import 'weigh_ticket_screen.dart';
+
+bool _isSplitLoadFromNotes(String? notes) {
+  if (notes == null) return false;
+  final lines = notes.split('\n');
+  return lines.any((line) => line.trim().toLowerCase() == 'split load: yes');
+}
+
+String? _splitWithFromNotes(String? notes) {
+  if (notes == null) return null;
+  final match = RegExp(r'Split With: (.*)', caseSensitive: false).firstMatch(notes);
+  return match?.group(1)?.trim();
+}
+
+int? _binFromNotes(String? notes, bool from) {
+  if (notes == null) return null;
+  final match = RegExp(r'Bins: (\d+) to (\d+)', caseSensitive: false).firstMatch(notes);
+  if (match == null) return null;
+  return from ? int.tryParse(match.group(1)!) : int.tryParse(match.group(2)!);
+}
+
+Future<void> _showPdfForTicket({
+  required BuildContext context,
+  required bool isInbound,
+  required String ticketNumber,
+  required String loadNumber,
+  required Location location,
+  required ScaleTerminal terminal,
+  required String entityName,
+  required String truckInfo,
+  String? driverName,
+  required String productInfo,
+  required double grossWeight,
+  required double tareWeight,
+  required double netWeight,
+  required bool isSplitLoad,
+  String? splitWith,
+  int? fromBin,
+  int? toBin,
+  String? notes,
+}) async {
+  final bytes = await buildTicketPdf(
+    ticketNumber: ticketNumber,
+    isInbound: isInbound,
+    loadNumber: loadNumber,
+    location: location,
+    terminal: terminal,
+    entityName: entityName,
+    truckInfo: truckInfo,
+    driverName: driverName,
+    productInfo: productInfo,
+    grossWeight: grossWeight,
+    tareWeight: tareWeight,
+    netWeight: netWeight,
+    isSplitLoad: isSplitLoad,
+    splitWith: splitWith,
+    fromBin: fromBin,
+    toBin: toBin,
+    notes: notes,
+  );
+
+  await Printing.layoutPdf(onLayout: (format) async => bytes);
+}
+
 
 class TicketsScreen extends StatelessWidget {
   const TicketsScreen({super.key, required this.direction});
@@ -62,6 +126,14 @@ class _InboundTicketCard extends StatelessWidget {
     final truck = truckById(ticket.truckId);
     final product = productById(ticket.productId);
 
+    final location = mockLocations.firstWhere((l) => l.id == ticket.locationId, orElse: () => mockLocations.first);
+    final terminal = mockTerminals.firstWhere((t) => t.id == ticket.terminalId, orElse: () => mockTerminals.first);
+    final driver = ticket.driverId != null ? driverById(ticket.driverId!) : null;
+    final bool isSplitLoad = _isSplitLoadFromNotes(ticket.notes);
+    final splitWith = _splitWithFromNotes(ticket.notes);
+    final fromBin = _binFromNotes(ticket.notes, true);
+    final toBin = _binFromNotes(ticket.notes, false);
+
     return _TicketCard(
       ticketNumber: ticket.ticketNumber,
       status: ticket.status,
@@ -76,6 +148,34 @@ class _InboundTicketCard extends StatelessWidget {
           _TicketRow(Icons.monitor_weight_outlined,
               'G: ${_fmt(ticket.grossWeight)}  T: ${_fmt(ticket.tareWeight)}  N: ${_fmt(ticket.netWeight)} lbs'),
       ],
+      actionButton: ticket.status == TicketStatus.complete
+          ? TextButton.icon(
+              onPressed: () async {
+                await _showPdfForTicket(
+                  context: context,
+                  isInbound: true,
+                  ticketNumber: ticket.ticketNumber,
+                  loadNumber: ticket.ticketNumber,
+                  location: location,
+                  terminal: terminal,
+                  entityName: supplier?.name ?? 'Supplier #${ticket.supplierId}',
+                  truckInfo: '${truck?.licensePlate ?? '—'} (${truck?.description ?? '—'})',
+                  driverName: driver?.name,
+                  productInfo: product?.name ?? '—',
+                  grossWeight: ticket.grossWeight ?? 0,
+                  tareWeight: ticket.tareWeight ?? 0,
+                  netWeight: ticket.netWeight ?? 0,
+                  isSplitLoad: isSplitLoad,
+                  splitWith: splitWith,
+                  fromBin: fromBin,
+                  toBin: toBin,
+                  notes: ticket.notes,
+                );
+              },
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Show PDF'),
+            )
+          : null,
     );
   }
 }
@@ -89,6 +189,14 @@ class _OutboundTicketCard extends StatelessWidget {
     final customer = customerById(ticket.customerId);
     final truck = truckById(ticket.truckId);
     final product = productById(ticket.productId);
+
+    final location = mockLocations.firstWhere((l) => l.id == ticket.locationId, orElse: () => mockLocations.first);
+    final terminal = mockTerminals.firstWhere((t) => t.id == ticket.terminalId, orElse: () => mockTerminals.first);
+    final driver = ticket.driverId != null ? driverById(ticket.driverId!) : null;
+    final bool isSplitLoad = _isSplitLoadFromNotes(ticket.notes);
+    final splitWith = _splitWithFromNotes(ticket.notes);
+    final fromBin = _binFromNotes(ticket.notes, true);
+    final toBin = _binFromNotes(ticket.notes, false);
 
     return _TicketCard(
       ticketNumber: ticket.ticketNumber,
@@ -104,6 +212,34 @@ class _OutboundTicketCard extends StatelessWidget {
           _TicketRow(Icons.monitor_weight_outlined,
               'G: ${_fmt(ticket.grossWeight)}  T: ${_fmt(ticket.tareWeight)}  N: ${_fmt(ticket.netWeight)} lbs'),
       ],
+      actionButton: ticket.status == TicketStatus.complete
+          ? TextButton.icon(
+              onPressed: () async {
+                await _showPdfForTicket(
+                  context: context,
+                  isInbound: false,
+                  ticketNumber: ticket.ticketNumber,
+                  loadNumber: ticket.ticketNumber,
+                  location: location,
+                  terminal: terminal,
+                  entityName: customer?.name ?? 'Customer #${ticket.customerId}',
+                  truckInfo: '${truck?.licensePlate ?? '—'} (${truck?.description ?? '—'})',
+                  driverName: driver?.name,
+                  productInfo: product?.name ?? '—',
+                  grossWeight: ticket.grossWeight ?? 0,
+                  tareWeight: ticket.tareWeight ?? 0,
+                  netWeight: ticket.netWeight ?? 0,
+                  isSplitLoad: isSplitLoad,
+                  splitWith: splitWith,
+                  fromBin: fromBin,
+                  toBin: toBin,
+                  notes: ticket.notes,
+                );
+              },
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Show PDF'),
+            )
+          : null,
     );
   }
 }
@@ -119,6 +255,7 @@ class _TicketCard extends StatelessWidget {
     required this.badge,
     required this.badgeColor,
     required this.rows,
+    this.actionButton,
   });
 
   final String ticketNumber;
@@ -128,6 +265,7 @@ class _TicketCard extends StatelessWidget {
   final String badge;
   final Color badgeColor;
   final List<_TicketRow> rows;
+  final Widget? actionButton;
 
   @override
   Widget build(BuildContext context) {
@@ -181,6 +319,10 @@ class _TicketCard extends StatelessWidget {
                     ],
                   ),
                 )),
+            if (actionButton != null) ...[
+              const Divider(height: 20),
+              actionButton!,
+            ],
           ],
         ),
       ),

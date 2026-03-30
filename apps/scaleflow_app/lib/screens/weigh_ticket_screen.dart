@@ -10,6 +10,75 @@ import 'package:scaleflow_core/scaleflow_core.dart';
 import '../mock_data.dart';
 import '../services/webhook_service.dart';
 
+Future<Uint8List> buildTicketPdf({
+  required String ticketNumber,
+  required bool isInbound,
+  required String loadNumber,
+  required Location location,
+  required ScaleTerminal terminal,
+  required String entityName,
+  required String truckInfo,
+  String? driverName,
+  required String productInfo,
+  required double grossWeight,
+  required double tareWeight,
+  required double netWeight,
+  required bool isSplitLoad,
+  String? splitWith,
+  int? fromBin,
+  int? toBin,
+  String? notes,
+}) async {
+  final pdf = pw.Document();
+
+  pdf.addPage(
+    pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      build: (context) {
+        return pw.Padding(
+          padding: const pw.EdgeInsets.all(24),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('Scale Ticket',
+                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 12),
+              pw.Text('Ticket #: $ticketNumber', style: pw.TextStyle(fontSize: 14)),
+              pw.Text('Type: ${isInbound ? 'Inbound' : 'Outbound'}', style: pw.TextStyle(fontSize: 14)),
+              pw.Text('Load #: $loadNumber', style: pw.TextStyle(fontSize: 14)),
+              pw.SizedBox(height: 12),
+              pw.Text('Location: ${location.name}'),
+              pw.Text('Terminal: ${terminal.name}'),
+              pw.Text('Entity: $entityName'),
+              pw.Text('Truck: $truckInfo'),
+              pw.Text('Driver: ${driverName ?? 'N/A'}'),
+              pw.Text('Product: $productInfo'),
+              pw.SizedBox(height: 12),
+              pw.Text('Gross Weight: ${grossWeight.toStringAsFixed(2)}'),
+              pw.Text('Tare Weight: ${tareWeight.toStringAsFixed(2)}'),
+              pw.Text('Net Weight: ${netWeight.toStringAsFixed(2)}'),
+              pw.SizedBox(height: 12),
+              pw.Text('Split Load: ${isSplitLoad ? 'Yes' : 'No'}'),
+              if (isSplitLoad && splitWith != null && splitWith.isNotEmpty)
+                pw.Text('Split With: $splitWith'),
+              if (isSplitLoad && fromBin != null && toBin != null)
+                pw.Text('Bins: $fromBin to $toBin'),
+              pw.SizedBox(height: 12),
+              if (notes != null && notes.isNotEmpty) ...[
+                pw.Text('Notes:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                pw.Text(notes),
+              ],
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
+  return pdf.save();
+}
+
+
 class WeighTicketScreen extends StatefulWidget {
   const WeighTicketScreen({
     super.key,
@@ -1242,52 +1311,25 @@ class _WeighTicketScreenState extends State<WeighTicketScreen> {
     int? toBin,
     String? notes,
   }) async {
-    final pdf = pw.Document();
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (context) {
-          return pw.Padding(
-            padding: const pw.EdgeInsets.all(24),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('Scale Ticket',
-                    style:
-                        pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                pw.SizedBox(height: 12),
-                pw.Text('Ticket #: $ticketNumber', style: pw.TextStyle(fontSize: 14)),
-                pw.Text('Type: ${isInbound ? 'Inbound' : 'Outbound'}', style: pw.TextStyle(fontSize: 14)),
-                pw.Text('Load #: $loadNumber', style: pw.TextStyle(fontSize: 14)),
-                pw.SizedBox(height: 12),
-                pw.Text('Location: ${location.name}'),
-                pw.Text('Terminal: ${terminal.name}'),
-                pw.Text('Entity: $entityName'),
-                pw.Text('Truck: $truckInfo'),
-                pw.Text('Driver: ${driverName ?? 'N/A'}'),
-                pw.Text('Product: $productInfo'),
-                pw.SizedBox(height: 12),
-                pw.Text('Gross Weight: ${grossWeight.toStringAsFixed(2)}'),
-                pw.Text('Tare Weight: ${tareWeight.toStringAsFixed(2)}'),
-                pw.Text('Net Weight: ${netWeight.toStringAsFixed(2)}'),
-                pw.SizedBox(height: 12),
-                pw.Text('Split Load: ${isSplitLoad ? 'Yes' : 'No'}'),
-                if (isSplitLoad && splitWith != null && splitWith.isNotEmpty) pw.Text('Split With: $splitWith'),
-                if (isSplitLoad && fromBin != null && toBin != null) pw.Text('Bins: $fromBin to $toBin'),
-                pw.SizedBox(height: 12),
-                if (notes != null && notes.isNotEmpty) ...[
-                  pw.Text('Notes:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text(notes),
-                ],
-              ],
-            ),
-          );
-        },
-      ),
+    return buildTicketPdf(
+      ticketNumber: ticketNumber,
+      isInbound: isInbound,
+      loadNumber: loadNumber,
+      location: location,
+      terminal: terminal,
+      entityName: entityName,
+      truckInfo: truckInfo,
+      driverName: driverName,
+      productInfo: productInfo,
+      grossWeight: grossWeight,
+      tareWeight: tareWeight,
+      netWeight: netWeight,
+      isSplitLoad: isSplitLoad,
+      splitWith: splitWith,
+      fromBin: fromBin,
+      toBin: toBin,
+      notes: notes,
     );
-
-    return pdf.save();
   }
 
   void _parseSplitLoadFromNotes(String notes) {
