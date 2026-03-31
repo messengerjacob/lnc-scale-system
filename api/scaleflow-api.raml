@@ -190,7 +190,6 @@ types:
         parity:   "N"
         stopBits: 1
       weightUnit:  "lbs"
-      dataFormat:  null
       active:      true
       lastSeenAt:  "2026-03-31T14:22:00Z"
       createdAt:   "2026-01-01T08:00:00Z"
@@ -389,7 +388,6 @@ types:
       licenseNumber:      "CDL-IL-44201"
       phone:              "217-555-0501"
       email:              "dave.k@midwestfreight.com"
-      supplierId:         null
       freightSupplierId:  1
       active:             true
       createdAt:          "2026-01-01T08:00:00Z"
@@ -435,7 +433,6 @@ types:
       tareWeight:        14200
       tareUnit:          "lbs"
       tareCertifiedDate: "2025-09-15"
-      supplierId:        null
       freightSupplierId: 1
       active:            true
       createdAt:         "2026-01-01T08:00:00Z"
@@ -534,7 +531,6 @@ types:
       externalSystem:   "ERP"
       externalRefId:    "LD-00388"
       status:           "partial"
-      notes:            null
       createdAt:        "2024-10-01T00:00:00Z"
       updatedAt:        "2026-03-30T14:00:00Z"
 
@@ -592,9 +588,7 @@ types:
       quantityShipped: 29200
       unit:            "bu"
       externalSystem:  "ERP"
-      externalRefId:   null
       status:          "partial"
-      notes:           null
       createdAt:       "2024-10-03T00:00:00Z"
       updatedAt:       "2026-03-30T14:00:00Z"
 
@@ -716,10 +710,6 @@ types:
       tareTime:     "2026-03-31T08:25:00Z"
       status:       "complete"
       isSplitLoad:  false
-      splitWith:    null
-      splitFromBin: null
-      splitToBin:   null
-      notes:        null
       synced:       true
       createdAt:    "2026-03-31T08:10:00Z"
       updatedAt:    "2026-03-31T08:25:00Z"
@@ -811,10 +801,6 @@ types:
       tareTime:     "2026-03-31T09:18:00Z"
       status:       "complete"
       isSplitLoad:  false
-      splitWith:    null
-      splitFromBin: null
-      splitToBin:   null
-      notes:        null
       synced:       true
       createdAt:    "2026-03-31T09:00:00Z"
       updatedAt:    "2026-03-31T09:18:00Z"
@@ -856,7 +842,6 @@ types:
       notes?: string
     example:
       status: "complete"
-      notes:  null
 
   # ---------------------------------------------------------------------------
   # Queue Entry
@@ -894,21 +879,13 @@ types:
       loadNumber:       "PO-2024-0055"
       direction:        "inbound"
       status:           "waitingInLine"
-      inboundTicketId:  null
-      outboundTicketId: null
-      ticketNumber:     null
       supplierId:       2
-      customerId:       null
       productId:        1
       poRefId:          2
-      soRefId:          null
       truckId:          3
       driverId:         2
-      terminalId:       null
       source:           "api"
       enteredAt:        "2026-03-31T10:00:00Z"
-      firstWeighAt:     null
-      secondWeighAt:    null
       createdAt:        "2026-03-31T10:00:00Z"
       updatedAt:        "2026-03-31T10:00:00Z"
 
@@ -1904,7 +1881,6 @@ securedBy: [apiKey]
                 externalSystem:   "ERP"
                 externalRefId:    "LD-00388"
                 status:           "partial"
-                notes:            null
                 createdAt:        "2024-10-01T00:00:00Z"
                 updatedAt:        "2026-03-30T14:00:00Z"
               - id:               2
@@ -1916,9 +1892,7 @@ securedBy: [apiKey]
                 quantityReceived: 0
                 unit:             "bu"
                 externalSystem:   "ERP"
-                externalRefId:    null
                 status:           "open"
-                notes:            null
                 createdAt:        "2024-10-08T00:00:00Z"
                 updatedAt:        "2024-10-08T00:00:00Z"
             total: 2
@@ -2007,9 +1981,7 @@ securedBy: [apiKey]
                 quantityShipped: 29200
                 unit:            "bu"
                 externalSystem:  "ERP"
-                externalRefId:   null
                 status:          "partial"
-                notes:           null
                 createdAt:       "2024-10-03T00:00:00Z"
                 updatedAt:       "2026-03-30T14:00:00Z"
               - id:              2
@@ -2021,9 +1993,7 @@ securedBy: [apiKey]
                 quantityShipped: 0
                 unit:            "bu"
                 externalSystem:  "ERP"
-                externalRefId:   null
                 status:          "open"
-                notes:           null
                 createdAt:       "2024-10-09T00:00:00Z"
                 updatedAt:       "2024-10-09T00:00:00Z"
             total: 2
@@ -2100,7 +2070,6 @@ securedBy: [apiKey]
             data:
               - id:         1
                 username:   "admin"
-                locationId: null
                 role:       "admin"
                 active:     true
                 createdAt:  "2026-01-01T08:00:00Z"
@@ -2114,7 +2083,6 @@ securedBy: [apiKey]
                 updatedAt:  "2026-01-10T08:00:00Z"
               - id:         3
                 username:   "merchandiser"
-                locationId: null
                 role:       "merchandiser"
                 active:     true
                 createdAt:  "2026-01-10T08:00:00Z"
@@ -2239,13 +2207,9 @@ securedBy: [apiKey]
                   truckId:      3
                   driverId:     2
                   productId:    2
-                  poRefId:      null
                   grossWeight:  38800
-                  tareWeight:   null
-                  netWeight:    null
                   weightUnit:   "lbs"
                   grossTime:    "2026-03-31T10:05:00Z"
-                  tareTime:     null
                   status:       "open"
                   isSplitLoad:  false
                   synced:       false
@@ -2355,11 +2319,8 @@ securedBy: [apiKey]
                   productId:    2
                   soRefId:      2
                   grossWeight:  39500
-                  tareWeight:   null
-                  netWeight:    null
                   weightUnit:   "lbs"
                   grossTime:    "2026-03-31T11:00:00Z"
-                  tareTime:     null
                   status:       "open"
                   isSplitLoad:  false
                   synced:       false
@@ -2439,21 +2400,13 @@ securedBy: [apiKey]
                 loadNumber:       "PO-2024-0055"
                 direction:        "inbound"
                 status:           "waitingInLine"
-                inboundTicketId:  null
-                outboundTicketId: null
-                ticketNumber:     null
                 supplierId:       2
-                customerId:       null
                 productId:        1
                 poRefId:          2
-                soRefId:          null
                 truckId:          3
                 driverId:         2
-                terminalId:       null
                 source:           "api"
                 enteredAt:        "2026-03-31T10:00:00Z"
-                firstWeighAt:     null
-                secondWeighAt:    null
                 createdAt:        "2026-03-31T10:00:00Z"
                 updatedAt:        "2026-03-31T10:00:00Z"
               - id:               2
@@ -2461,13 +2414,10 @@ securedBy: [apiKey]
                 loadNumber:       "SO-2024-0089"
                 direction:        "outbound"
                 status:           "weighing"
-                inboundTicketId:  null
                 outboundTicketId: 2
                 ticketNumber:     "OUT-0002"
-                supplierId:       null
                 customerId:       11
                 productId:        2
-                poRefId:          null
                 soRefId:          2
                 truckId:          4
                 driverId:         1
@@ -2475,7 +2425,6 @@ securedBy: [apiKey]
                 source:           "manual"
                 enteredAt:        "2026-03-31T10:50:00Z"
                 firstWeighAt:     "2026-03-31T11:00:00Z"
-                secondWeighAt:    null
                 createdAt:        "2026-03-31T10:50:00Z"
                 updatedAt:        "2026-03-31T11:00:00Z"
             total: 2
