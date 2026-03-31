@@ -1,0 +1,2725 @@
+#%RAML 1.0
+title: lnc-scale-api
+version: v1
+baseUri: https://api.lnc-scale-api.internal/{version}
+mediaType: application/json
+
+# =============================================================================
+# Security
+# =============================================================================
+
+securitySchemes:
+  apiKey:
+    type: Pass Through
+    describedBy:
+      headers:
+        x-api-key:
+          description: API key issued by MuleSoft API Manager
+          type: string
+          required: true
+
+# =============================================================================
+# Traits
+# =============================================================================
+
+traits:
+
+  pageable:
+    queryParameters:
+      page:
+        type: integer
+        default: 1
+        minimum: 1
+        description: Page number (1-based)
+      pageSize:
+        type: integer
+        default: 50
+        maximum: 200
+        description: Records per page
+
+  syncable:
+    queryParameters:
+      since:
+        type: datetime
+        required: false
+        description: |
+          Return only records where updated_at > this value.
+          ISO 8601 format: 2026-01-15T00:00:00Z
+          Used by the location sync service for incremental pulls.
+
+  locationScoped:
+    queryParameters:
+      locationId:
+        type: integer
+        required: true
+        description: Filter results to a specific location
+
+# =============================================================================
+# Types
+# =============================================================================
+
+types:
+
+  # ---------------------------------------------------------------------------
+  # Shared / primitives
+  # ---------------------------------------------------------------------------
+
+  WeightUnit:
+    type: string
+    enum: [lbs, kg, tons]
+
+  TicketStatus:
+    type: string
+    enum: [open, complete, voided]
+
+  PoStatus:
+    type: string
+    enum: [open, partial, received, cancelled]
+
+  SoStatus:
+    type: string
+    enum: [open, partial, shipped, cancelled]
+
+  QueueStatus:
+    type: string
+    enum: [waitingInLine, weighing, loadingUnloading, secondWeighing, complete]
+
+  Direction:
+    type: string
+    enum: [inbound, outbound]
+
+  OperatorRole:
+    type: string
+    enum: [location, admin, merchandiser]
+
+  Error:
+    properties:
+      code:     string
+      message:  string
+      details?: string
+    example:
+      code:    "NOT_FOUND"
+      message: "Record with id 99 was not found"
+
+  # ---------------------------------------------------------------------------
+  # Location
+  # ---------------------------------------------------------------------------
+
+  Location:
+    properties:
+      id:         integer
+      name:       string
+      address:    string
+      city:       string
+      state:      string
+      zip:        string
+      timezone:   string
+      phone?:     string
+      active:     boolean
+      createdAt:  datetime
+      updatedAt:  datetime
+    example:
+      id:        1
+      name:      "Main Yard"
+      address:   "100 Industrial Rd"
+      city:      "Springfield"
+      state:     "IL"
+      zip:       "62701"
+      timezone:  "America/Chicago"
+      phone:     "217-555-0100"
+      active:    true
+      createdAt: "2026-01-01T08:00:00Z"
+      updatedAt: "2026-01-01T08:00:00Z"
+
+  LocationInput:
+    properties:
+      name:       string
+      address:    string
+      city:       string
+      state:      string
+      zip:        string
+      timezone:   string
+      phone?:     string
+      active?:    boolean
+    example:
+      name:      "South Terminal"
+      address:   "800 River Rd"
+      city:      "Peoria"
+      state:     "IL"
+      zip:       "61602"
+      timezone:  "America/Chicago"
+      phone:     "309-555-0150"
+      active:    true
+
+  # ---------------------------------------------------------------------------
+  # Scale Terminal
+  # ---------------------------------------------------------------------------
+
+  ScaleTerminal:
+    properties:
+      id:               integer
+      locationId:       integer
+      name:             string
+      terminalId:       string
+      make?:            string
+      model?:           string
+      serialNumber?:    string
+      connectionType:
+        type: string
+        enum: [rs232, tcp]
+      connectionConfig: object
+      weightUnit:       WeightUnit
+      dataFormat?:      string
+      active:           boolean
+      lastSeenAt?:      datetime
+      createdAt:        datetime
+      updatedAt:        datetime
+    example:
+      id:             1
+      locationId:     1
+      name:           "Scale 1 (Main)"
+      terminalId:     "TERM-01"
+      make:           "Fairbanks"
+      model:          "FB3000"
+      serialNumber:   "SN-100201"
+      connectionType: "rs232"
+      connectionConfig:
+        port:     "COM3"
+        baud:     9600
+        dataBits: 8
+        parity:   "N"
+        stopBits: 1
+      weightUnit:  "lbs"
+      dataFormat:  null
+      active:      true
+      lastSeenAt:  "2026-03-31T14:22:00Z"
+      createdAt:   "2026-01-01T08:00:00Z"
+      updatedAt:   "2026-03-31T14:22:00Z"
+
+  ScaleTerminalInput:
+    properties:
+      locationId:       integer
+      name:             string
+      terminalId:       string
+      make?:            string
+      model?:           string
+      serialNumber?:    string
+      connectionType:
+        type: string
+        enum: [rs232, tcp]
+      connectionConfig: object
+      weightUnit:       WeightUnit
+      dataFormat?:      string
+      active?:          boolean
+    example:
+      locationId:     2
+      name:           "Scale 1 (North)"
+      terminalId:     "TERM-03"
+      make:           "Mettler Toledo"
+      model:          "IND780"
+      serialNumber:   "SN-200115"
+      connectionType: "rs232"
+      connectionConfig:
+        port:     "COM4"
+        baud:     9600
+        dataBits: 8
+        parity:   "N"
+        stopBits: 1
+      weightUnit: "lbs"
+      active:     true
+
+  # ---------------------------------------------------------------------------
+  # Supplier
+  # ---------------------------------------------------------------------------
+
+  Supplier:
+    properties:
+      id:              integer
+      name:            string
+      contactName?:    string
+      phone?:          string
+      email?:          string
+      address?:        string
+      commodityTypes?: string
+      active:          boolean
+      createdAt:       datetime
+      updatedAt:       datetime
+    example:
+      id:             1
+      name:           "Heartland Grain Co."
+      contactName:    "Bob Farmer"
+      phone:          "217-555-0301"
+      email:          "bob@heartlandgrain.com"
+      address:        "2200 Farm Bureau Rd, Springfield, IL 62701"
+      commodityTypes: "Corn, Soybeans"
+      active:         true
+      createdAt:      "2026-01-01T08:00:00Z"
+      updatedAt:      "2026-01-01T08:00:00Z"
+
+  SupplierInput:
+    properties:
+      name:            string
+      contactName?:    string
+      phone?:          string
+      email?:          string
+      address?:        string
+      commodityTypes?: string
+      active?:         boolean
+    example:
+      name:           "Blue River Ag"
+      contactName:    "Lisa Grower"
+      phone:          "217-555-0399"
+      email:          "lisa@blueriverag.com"
+      commodityTypes: "Corn, Wheat"
+      active:         true
+
+  # ---------------------------------------------------------------------------
+  # Freight Supplier
+  # ---------------------------------------------------------------------------
+
+  FreightSupplier:
+    properties:
+      id:           integer
+      name:         string
+      contactName?: string
+      phone?:       string
+      email?:       string
+      address?:     string
+      city?:        string
+      state?:       string
+      zip?:         string
+      active:       boolean
+      createdAt:    datetime
+      updatedAt:    datetime
+    example:
+      id:          1
+      name:        "Midwest Freight LLC"
+      contactName: "John Hauler"
+      phone:       "217-555-0601"
+      email:       "jhauler@midwestfreight.com"
+      address:     "300 Truckers Way"
+      city:        "Springfield"
+      state:       "IL"
+      zip:         "62703"
+      active:      true
+      createdAt:   "2026-01-01T08:00:00Z"
+      updatedAt:   "2026-01-01T08:00:00Z"
+
+  FreightSupplierInput:
+    properties:
+      name:         string
+      contactName?: string
+      phone?:       string
+      email?:       string
+      address?:     string
+      city?:        string
+      state?:       string
+      zip?:         string
+      active?:      boolean
+    example:
+      name:        "Cardinal Carriers Inc."
+      contactName: "Mike Routes"
+      phone:       "217-555-0650"
+      email:       "mroutes@cardinalcarriers.com"
+      city:        "Decatur"
+      state:       "IL"
+      zip:         "62521"
+      active:      true
+
+  # ---------------------------------------------------------------------------
+  # Customer
+  # ---------------------------------------------------------------------------
+
+  Customer:
+    properties:
+      id:           integer
+      name:         string
+      contactName?: string
+      phone?:       string
+      email?:       string
+      address?:     string
+      active:       boolean
+      createdAt:    datetime
+      updatedAt:    datetime
+    example:
+      id:          10
+      name:        "Midwest Feed & Grain"
+      contactName: "Janet Cole"
+      phone:       "217-555-0401"
+      email:       "jcole@midwestfeed.com"
+      address:     "500 Mill St, Springfield, IL 62701"
+      active:      true
+      createdAt:   "2026-01-01T08:00:00Z"
+      updatedAt:   "2026-01-01T08:00:00Z"
+
+  CustomerInput:
+    properties:
+      name:         string
+      contactName?: string
+      phone?:       string
+      email?:       string
+      address?:     string
+      active?:      boolean
+    example:
+      name:        "Northern Grain Exchange"
+      contactName: "Paul Buyer"
+      phone:       "217-555-0450"
+      email:       "pbuyer@northerngrain.com"
+      active:      true
+
+  # ---------------------------------------------------------------------------
+  # Driver
+  # ---------------------------------------------------------------------------
+
+  Driver:
+    properties:
+      id:                 integer
+      name:               string
+      licenseNumber?:     string
+      phone?:             string
+      email?:             string
+      supplierId?:        integer
+      freightSupplierId?: integer
+      active:             boolean
+      createdAt:          datetime
+      updatedAt:          datetime
+    example:
+      id:                 1
+      name:               "Dave Kowalski"
+      licenseNumber:      "CDL-IL-44201"
+      phone:              "217-555-0501"
+      email:              "dave.k@midwestfreight.com"
+      supplierId:         null
+      freightSupplierId:  1
+      active:             true
+      createdAt:          "2026-01-01T08:00:00Z"
+      updatedAt:          "2026-01-01T08:00:00Z"
+
+  DriverInput:
+    properties:
+      name:               string
+      licenseNumber?:     string
+      phone?:             string
+      email?:             string
+      supplierId?:        integer
+      freightSupplierId?: integer
+      active?:            boolean
+    example:
+      name:              "Carlos Rivera"
+      licenseNumber:     "CDL-IL-55678"
+      phone:             "217-555-0555"
+      freightSupplierId: 1
+      active:            true
+
+  # ---------------------------------------------------------------------------
+  # Truck
+  # ---------------------------------------------------------------------------
+
+  Truck:
+    properties:
+      id:                 integer
+      licensePlate:       string
+      description?:       string
+      tareWeight?:        number
+      tareUnit?:          WeightUnit
+      tareCertifiedDate?: date-only
+      supplierId?:        integer
+      freightSupplierId?: integer
+      active:             boolean
+      createdAt:          datetime
+      updatedAt:          datetime
+    example:
+      id:                1
+      licensePlate:      "IL-TRK-001"
+      description:       "Peterbilt 389 - Red"
+      tareWeight:        14200
+      tareUnit:          "lbs"
+      tareCertifiedDate: "2025-09-15"
+      supplierId:        null
+      freightSupplierId: 1
+      active:            true
+      createdAt:         "2026-01-01T08:00:00Z"
+      updatedAt:         "2026-01-01T08:00:00Z"
+
+  TruckInput:
+    properties:
+      licensePlate:       string
+      description?:       string
+      tareWeight?:        number
+      tareUnit?:          WeightUnit
+      tareCertifiedDate?: date-only
+      supplierId?:        integer
+      freightSupplierId?: integer
+      active?:            boolean
+    example:
+      licensePlate:      "IL-TRK-009"
+      description:       "Kenworth W900 - Green"
+      tareWeight:        14500
+      tareUnit:          "lbs"
+      tareCertifiedDate: "2025-11-01"
+      freightSupplierId: 2
+      active:            true
+
+  # ---------------------------------------------------------------------------
+  # Product
+  # ---------------------------------------------------------------------------
+
+  Product:
+    properties:
+      id:             integer
+      name:           string
+      category:       string
+      unit:           string
+      currentStock:   number
+      minStockAlert?: number
+      active:         boolean
+      createdAt:      datetime
+      updatedAt:      datetime
+    example:
+      id:            1
+      name:          "Corn #2 Yellow"
+      category:      "Grain"
+      unit:          "bu"
+      currentStock:  142500
+      minStockAlert: 50000
+      active:        true
+      createdAt:     "2026-01-01T08:00:00Z"
+      updatedAt:     "2026-03-31T06:00:00Z"
+
+  ProductInput:
+    properties:
+      name:           string
+      category:       string
+      unit:           string
+      currentStock?:  number
+      minStockAlert?: number
+      active?:        boolean
+    example:
+      name:          "Sorghum"
+      category:      "Grain"
+      unit:          "bu"
+      currentStock:  0
+      minStockAlert: 10000
+      active:        true
+
+  # ---------------------------------------------------------------------------
+  # Purchase Order
+  # ---------------------------------------------------------------------------
+
+  PurchaseOrderRef:
+    properties:
+      id:               integer
+      locationId:       integer
+      supplierId:       integer
+      productId:        integer
+      poNumber:         string
+      quantityOrdered:  number
+      quantityReceived: number
+      unit:             string
+      externalSystem:   string
+      externalRefId?:   string
+      status:           PoStatus
+      notes?:           string
+      createdAt:        datetime
+      updatedAt:        datetime
+    example:
+      id:               1
+      locationId:       1
+      supplierId:       1
+      productId:        1
+      poNumber:         "PO-2024-0041"
+      quantityOrdered:  50000
+      quantityReceived: 28300
+      unit:             "bu"
+      externalSystem:   "ERP"
+      externalRefId:    "LD-00388"
+      status:           "partial"
+      notes:            null
+      createdAt:        "2024-10-01T00:00:00Z"
+      updatedAt:        "2026-03-30T14:00:00Z"
+
+  PurchaseOrderRefInput:
+    properties:
+      locationId:        integer
+      supplierId:        integer
+      productId:         integer
+      poNumber:          string
+      quantityOrdered:   number
+      quantityReceived?: number
+      unit:              string
+      externalSystem:    string
+      externalRefId?:    string
+      status?:           PoStatus
+      notes?:            string
+    example:
+      locationId:       1
+      supplierId:       2
+      productId:        1
+      poNumber:         "PO-2026-0101"
+      quantityOrdered:  30000
+      unit:             "bu"
+      externalSystem:   "ERP"
+      externalRefId:    "LD-00501"
+      status:           "open"
+
+  # ---------------------------------------------------------------------------
+  # Sales Order
+  # ---------------------------------------------------------------------------
+
+  SalesOrderRef:
+    properties:
+      id:               integer
+      locationId:       integer
+      customerId:       integer
+      productId:        integer
+      soNumber:         string
+      quantityOrdered:  number
+      quantityShipped:  number
+      unit:             string
+      externalSystem:   string
+      externalRefId?:   string
+      status:           SoStatus
+      notes?:           string
+      createdAt:        datetime
+      updatedAt:        datetime
+    example:
+      id:              1
+      locationId:      1
+      customerId:      10
+      productId:       1
+      soNumber:        "SO-2024-0089"
+      quantityOrdered: 40000
+      quantityShipped: 29200
+      unit:            "bu"
+      externalSystem:  "ERP"
+      externalRefId:   null
+      status:          "partial"
+      notes:           null
+      createdAt:       "2024-10-03T00:00:00Z"
+      updatedAt:       "2026-03-30T14:00:00Z"
+
+  SalesOrderRefInput:
+    properties:
+      locationId:       integer
+      customerId:       integer
+      productId:        integer
+      soNumber:         string
+      quantityOrdered:  number
+      quantityShipped?: number
+      unit:             string
+      externalSystem:   string
+      externalRefId?:   string
+      status?:          SoStatus
+      notes?:           string
+    example:
+      locationId:      1
+      customerId:      11
+      productId:       2
+      soNumber:        "SO-2026-0110"
+      quantityOrdered: 25000
+      unit:            "bu"
+      externalSystem:  "ERP"
+      status:          "open"
+
+  # ---------------------------------------------------------------------------
+  # Operator
+  # ---------------------------------------------------------------------------
+
+  Operator:
+    properties:
+      id:          integer
+      username:    string
+      locationId?: integer
+      role:        OperatorRole
+      active:      boolean
+      createdAt:   datetime
+      updatedAt:   datetime
+    example:
+      id:         2
+      username:   "jsmith"
+      locationId: 1
+      role:       "location"
+      active:     true
+      createdAt:  "2026-01-10T08:00:00Z"
+      updatedAt:  "2026-01-10T08:00:00Z"
+
+  OperatorInput:
+    properties:
+      username:    string
+      password:    string
+      locationId?: integer
+      role:        OperatorRole
+      active?:     boolean
+    example:
+      username:   "mwilson"
+      password:   "Temp@1234"
+      locationId: 2
+      role:       "location"
+      active:     true
+
+  OperatorUpdateInput:
+    properties:
+      username?:   string
+      password?:   string
+      locationId?: integer
+      role?:       OperatorRole
+      active?:     boolean
+    example:
+      role:   "merchandiser"
+      active: true
+
+  # ---------------------------------------------------------------------------
+  # Inbound Ticket
+  # ---------------------------------------------------------------------------
+
+  InboundTicket:
+    properties:
+      id:            integer
+      ticketNumber:  string
+      locationId:    integer
+      terminalId:    integer
+      supplierId:    integer
+      truckId:       integer
+      driverId?:     integer
+      productId:     integer
+      poRefId?:      integer
+      grossWeight?:  number
+      tareWeight?:   number
+      netWeight?:    number
+      weightUnit:    WeightUnit
+      grossTime?:    datetime
+      tareTime?:     datetime
+      status:        TicketStatus
+      isSplitLoad:   boolean
+      splitWith?:    string
+      splitFromBin?: integer
+      splitToBin?:   integer
+      notes?:        string
+      synced:        boolean
+      createdAt:     datetime
+      updatedAt:     datetime
+    example:
+      id:           1
+      ticketNumber: "IN-0001"
+      locationId:   1
+      terminalId:   1
+      supplierId:   1
+      truckId:      1
+      driverId:     1
+      productId:    1
+      poRefId:      1
+      grossWeight:  42500
+      tareWeight:   14200
+      netWeight:    28300
+      weightUnit:   "lbs"
+      grossTime:    "2026-03-31T08:10:00Z"
+      tareTime:     "2026-03-31T08:25:00Z"
+      status:       "complete"
+      isSplitLoad:  false
+      splitWith:    null
+      splitFromBin: null
+      splitToBin:   null
+      notes:        null
+      synced:       true
+      createdAt:    "2026-03-31T08:10:00Z"
+      updatedAt:    "2026-03-31T08:25:00Z"
+
+  InboundTicketInput:
+    properties:
+      locationId:    integer
+      terminalId:    integer
+      supplierId:    integer
+      truckId:       integer
+      driverId?:     integer
+      productId:     integer
+      poRefId?:      integer
+      grossWeight?:  number
+      tareWeight?:   number
+      weightUnit:    WeightUnit
+      grossTime?:    datetime
+      isSplitLoad?:  boolean
+      splitWith?:    string
+      splitFromBin?: integer
+      splitToBin?:   integer
+      notes?:        string
+    example:
+      locationId:  1
+      terminalId:  1
+      supplierId:  2
+      truckId:     3
+      driverId:    2
+      productId:   2
+      poRefId:     2
+      grossWeight: 38800
+      weightUnit:  "lbs"
+      grossTime:   "2026-03-31T10:05:00Z"
+      isSplitLoad: false
+
+  InboundTicketStatusUpdate:
+    properties:
+      status: TicketStatus
+      notes?: string
+    example:
+      status: "voided"
+      notes:  "Truck turned around — wrong product loaded"
+
+  # ---------------------------------------------------------------------------
+  # Outbound Ticket
+  # ---------------------------------------------------------------------------
+
+  OutboundTicket:
+    properties:
+      id:            integer
+      ticketNumber:  string
+      locationId:    integer
+      terminalId:    integer
+      customerId:    integer
+      truckId:       integer
+      driverId?:     integer
+      productId:     integer
+      soRefId?:      integer
+      grossWeight?:  number
+      tareWeight?:   number
+      netWeight?:    number
+      weightUnit:    WeightUnit
+      grossTime?:    datetime
+      tareTime?:     datetime
+      status:        TicketStatus
+      isSplitLoad:   boolean
+      splitWith?:    string
+      splitFromBin?: integer
+      splitToBin?:   integer
+      notes?:        string
+      synced:        boolean
+      createdAt:     datetime
+      updatedAt:     datetime
+    example:
+      id:           1
+      ticketNumber: "OUT-0001"
+      locationId:   1
+      terminalId:   1
+      customerId:   10
+      truckId:      2
+      driverId:     4
+      productId:    1
+      soRefId:      1
+      grossWeight:  44000
+      tareWeight:   14800
+      netWeight:    29200
+      weightUnit:   "lbs"
+      grossTime:    "2026-03-31T09:00:00Z"
+      tareTime:     "2026-03-31T09:18:00Z"
+      status:       "complete"
+      isSplitLoad:  false
+      splitWith:    null
+      splitFromBin: null
+      splitToBin:   null
+      notes:        null
+      synced:       true
+      createdAt:    "2026-03-31T09:00:00Z"
+      updatedAt:    "2026-03-31T09:18:00Z"
+
+  OutboundTicketInput:
+    properties:
+      locationId:    integer
+      terminalId:    integer
+      customerId:    integer
+      truckId:       integer
+      driverId?:     integer
+      productId:     integer
+      soRefId?:      integer
+      grossWeight?:  number
+      tareWeight?:   number
+      weightUnit:    WeightUnit
+      grossTime?:    datetime
+      isSplitLoad?:  boolean
+      splitWith?:    string
+      splitFromBin?: integer
+      splitToBin?:   integer
+      notes?:        string
+    example:
+      locationId:  1
+      terminalId:  2
+      customerId:  11
+      truckId:     4
+      driverId:    1
+      productId:   2
+      soRefId:     2
+      grossWeight: 39500
+      weightUnit:  "lbs"
+      grossTime:   "2026-03-31T11:00:00Z"
+      isSplitLoad: false
+
+  OutboundTicketStatusUpdate:
+    properties:
+      status: TicketStatus
+      notes?: string
+    example:
+      status: "complete"
+      notes:  null
+
+  # ---------------------------------------------------------------------------
+  # Queue Entry
+  # ---------------------------------------------------------------------------
+
+  QueueEntry:
+    properties:
+      id:                integer
+      locationId:        integer
+      loadNumber:        string
+      direction:         Direction
+      status:            QueueStatus
+      inboundTicketId?:  integer
+      outboundTicketId?: integer
+      ticketNumber?:     string
+      supplierId?:       integer
+      customerId?:       integer
+      productId?:        integer
+      poRefId?:          integer
+      soRefId?:          integer
+      truckId?:          integer
+      driverId?:         integer
+      terminalId?:       integer
+      source:
+        type: string
+        enum: [manual, api]
+      enteredAt:         datetime
+      firstWeighAt?:     datetime
+      secondWeighAt?:    datetime
+      createdAt:         datetime
+      updatedAt:         datetime
+    example:
+      id:               1
+      locationId:       1
+      loadNumber:       "PO-2024-0055"
+      direction:        "inbound"
+      status:           "waitingInLine"
+      inboundTicketId:  null
+      outboundTicketId: null
+      ticketNumber:     null
+      supplierId:       2
+      customerId:       null
+      productId:        1
+      poRefId:          2
+      soRefId:          null
+      truckId:          3
+      driverId:         2
+      terminalId:       null
+      source:           "api"
+      enteredAt:        "2026-03-31T10:00:00Z"
+      firstWeighAt:     null
+      secondWeighAt:    null
+      createdAt:        "2026-03-31T10:00:00Z"
+      updatedAt:        "2026-03-31T10:00:00Z"
+
+  QueueEntryInput:
+    description: Used by API check-in (dispatch / driver app)
+    properties:
+      locationId:  integer
+      loadNumber:  string
+      direction:   Direction
+      supplierId?: integer
+      customerId?: integer
+      productId?:  integer
+      poRefId?:    integer
+      soRefId?:    integer
+      truckId?:    integer
+      driverId?:   integer
+      source?:
+        type: string
+        enum: [manual, api]
+    example:
+      locationId: 1
+      loadNumber: "PO-2024-0062"
+      direction:  "inbound"
+      supplierId: 1
+      productId:  2
+      poRefId:    3
+      truckId:    5
+      driverId:   3
+      source:     "api"
+
+  QueueStatusUpdate:
+    description: Advance a queue entry to the next status
+    properties:
+      status:      QueueStatus
+      terminalId?: integer
+      truckId?:    integer
+      driverId?:   integer
+    example:
+      status:     "weighing"
+      terminalId: 1
+      truckId:    3
+      driverId:   2
+
+  # ---------------------------------------------------------------------------
+  # Webhook Config
+  # ---------------------------------------------------------------------------
+
+  WebhookConfig:
+    properties:
+      id:              integer
+      name:            string
+      url:             string
+      method:
+        type: string
+        enum: [get, post, put, patch]
+      headersJson?:    string
+      triggerEvent:    string
+      ticketDirection:
+        type: string
+        enum: [inbound, outbound, queue, both]
+      active:          boolean
+      createdAt:       datetime
+      updatedAt:       datetime
+    example:
+      id:             1
+      name:           "MuleSoft — Inbound Ticket Completed"
+      url:            "https://mulesoft.internal/scaleflow/ticket-completed"
+      method:         "post"
+      headersJson:    "{\"Content-Type\":\"application/json\",\"x-api-key\":\"abc123\"}"
+      triggerEvent:   "ticket.completed"
+      ticketDirection: "inbound"
+      active:         true
+      createdAt:      "2026-01-01T08:00:00Z"
+      updatedAt:      "2026-01-01T08:00:00Z"
+
+  WebhookConfigInput:
+    properties:
+      name:            string
+      url:             string
+      method:
+        type: string
+        enum: [get, post, put, patch]
+      headersJson?:    string
+      triggerEvent:    string
+      ticketDirection:
+        type: string
+        enum: [inbound, outbound, queue, both]
+      active?:         boolean
+    example:
+      name:            "MuleSoft — Queue Status Change"
+      url:             "https://mulesoft.internal/scaleflow/queue-event"
+      method:          "post"
+      headersJson:     "{\"Content-Type\":\"application/json\",\"x-api-key\":\"abc123\"}"
+      triggerEvent:    "queue.status_changed"
+      ticketDirection: "queue"
+      active:          true
+
+  # ---------------------------------------------------------------------------
+  # Outbox (sync push from location to cloud)
+  # ---------------------------------------------------------------------------
+
+  OutboxEntry:
+    properties:
+      locationId:  integer
+      entityType:
+        type: string
+        enum: [INBOUND, OUTBOUND, QUEUE]
+      entityId:    integer
+      payloadJson: string
+    example:
+      locationId:  1
+      entityType:  "INBOUND"
+      entityId:    4
+      payloadJson: "{\"ticketNumber\":\"IN-0004\",\"status\":\"complete\",\"netWeight\":27100}"
+
+  OutboxBatch:
+    properties:
+      entries: OutboxEntry[]
+    example:
+      entries:
+        - locationId:  1
+          entityType:  "INBOUND"
+          entityId:    4
+          payloadJson: "{\"ticketNumber\":\"IN-0004\",\"status\":\"complete\",\"netWeight\":27100}"
+        - locationId:  1
+          entityType:  "QUEUE"
+          entityId:    3
+          payloadJson: "{\"status\":\"complete\",\"secondWeighAt\":\"2026-03-31T10:45:00Z\"}"
+
+  OutboxBatchResult:
+    properties:
+      accepted:  integer
+      rejected:  integer
+      errors?:   Error[]
+    example:
+      accepted: 2
+      rejected: 0
+
+# =============================================================================
+# Resources
+# =============================================================================
+
+securedBy: [apiKey]
+
+# ---------------------------------------------------------------------------
+# Locations
+# ---------------------------------------------------------------------------
+
+/locations:
+  description: Physical locations (grain elevators / yards)
+  get:
+    description: List all locations
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:        1
+                name:      "Main Yard"
+                address:   "100 Industrial Rd"
+                city:      "Springfield"
+                state:     "IL"
+                zip:       "62701"
+                timezone:  "America/Chicago"
+                phone:     "217-555-0100"
+                active:    true
+                createdAt: "2026-01-01T08:00:00Z"
+                updatedAt: "2026-01-01T08:00:00Z"
+              - id:        2
+                name:      "North Depot"
+                address:   "450 Commerce Blvd"
+                city:      "Decatur"
+                state:     "IL"
+                zip:       "62521"
+                timezone:  "America/Chicago"
+                phone:     "217-555-0200"
+                active:    true
+                createdAt: "2026-01-01T08:00:00Z"
+                updatedAt: "2026-01-01T08:00:00Z"
+            total: 2
+            page:  1
+  post:
+    description: Create a new location
+    body:
+      type: LocationInput
+    responses:
+      201:
+        body:
+          type: Location
+      400:
+        body:
+          type: Error
+
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single location by ID
+      responses:
+        200:
+          body:
+            type: Location
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a location
+      body:
+        type: LocationInput
+      responses:
+        200:
+          body:
+            type: Location
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a location (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+    /scales:
+      description: Scale terminals at this location
+      get:
+        description: List all scale terminals at a location
+        is: [pageable]
+        responses:
+          200:
+            body:
+              type: object
+              example:
+                data:
+                  - id:             1
+                    locationId:     1
+                    name:           "Scale 1 (Main)"
+                    terminalId:     "TERM-01"
+                    make:           "Fairbanks"
+                    model:          "FB3000"
+                    serialNumber:   "SN-100201"
+                    connectionType: "rs232"
+                    connectionConfig:
+                      port:     "COM3"
+                      baud:     9600
+                      dataBits: 8
+                      parity:   "N"
+                      stopBits: 1
+                    weightUnit:  "lbs"
+                    active:      true
+                    lastSeenAt:  "2026-03-31T14:22:00Z"
+                    createdAt:   "2026-01-01T08:00:00Z"
+                    updatedAt:   "2026-03-31T14:22:00Z"
+                total: 1
+                page:  1
+      post:
+        description: Register a new scale terminal at this location
+        body:
+          type: ScaleTerminalInput
+        responses:
+          201:
+            body:
+              type: ScaleTerminal
+          400:
+            body:
+              type: Error
+
+# ---------------------------------------------------------------------------
+# Scale Terminals
+# ---------------------------------------------------------------------------
+
+/scales:
+  description: Scale terminals across all locations
+  get:
+    description: List all scale terminals
+    is: [pageable, syncable]
+    queryParameters:
+      locationId:
+        type: integer
+        required: false
+      active:
+        type: boolean
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:             1
+                locationId:     1
+                name:           "Scale 1 (Main)"
+                terminalId:     "TERM-01"
+                make:           "Fairbanks"
+                model:          "FB3000"
+                serialNumber:   "SN-100201"
+                connectionType: "rs232"
+                connectionConfig:
+                  port:     "COM3"
+                  baud:     9600
+                  dataBits: 8
+                  parity:   "N"
+                  stopBits: 1
+                weightUnit: "lbs"
+                active:     true
+                lastSeenAt: "2026-03-31T14:22:00Z"
+                createdAt:  "2026-01-01T08:00:00Z"
+                updatedAt:  "2026-03-31T14:22:00Z"
+              - id:             2
+                locationId:     1
+                name:           "Scale 2 (Main)"
+                terminalId:     "TERM-02"
+                make:           "Rice Lake"
+                model:          "RL1210"
+                serialNumber:   "SN-100308"
+                connectionType: "tcp"
+                connectionConfig:
+                  host: "192.168.1.50"
+                  port: 10001
+                weightUnit: "lbs"
+                active:     true
+                lastSeenAt: "2026-03-31T14:20:00Z"
+                createdAt:  "2026-01-01T08:00:00Z"
+                updatedAt:  "2026-03-31T14:20:00Z"
+            total: 2
+            page:  1
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single scale terminal
+      responses:
+        200:
+          body:
+            type: ScaleTerminal
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a scale terminal
+      body:
+        type: ScaleTerminalInput
+      responses:
+        200:
+          body:
+            type: ScaleTerminal
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a scale terminal (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Suppliers
+# ---------------------------------------------------------------------------
+
+/suppliers:
+  description: Commodity suppliers (global reference data)
+  get:
+    description: List all suppliers
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      search:
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:             1
+                name:           "Heartland Grain Co."
+                contactName:    "Bob Farmer"
+                phone:          "217-555-0301"
+                email:          "bob@heartlandgrain.com"
+                commodityTypes: "Corn, Soybeans"
+                active:         true
+                createdAt:      "2026-01-01T08:00:00Z"
+                updatedAt:      "2026-01-01T08:00:00Z"
+              - id:             2
+                name:           "Prairie Logistics"
+                contactName:    "Sarah Mills"
+                phone:          "217-555-0302"
+                email:          "smills@prairielogistics.com"
+                commodityTypes: "Corn, Wheat"
+                active:         true
+                createdAt:      "2026-01-01T08:00:00Z"
+                updatedAt:      "2026-01-01T08:00:00Z"
+              - id:             3
+                name:           "River Valley Ag"
+                contactName:    "Tom Walsh"
+                phone:          "217-555-0303"
+                email:          "twalsh@rivervalleyag.com"
+                commodityTypes: "Soybeans, Sunflower"
+                active:         true
+                createdAt:      "2026-01-01T08:00:00Z"
+                updatedAt:      "2026-01-01T08:00:00Z"
+            total: 3
+            page:  1
+  post:
+    description: Create a supplier
+    body:
+      type: SupplierInput
+    responses:
+      201:
+        body:
+          type: Supplier
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single supplier
+      responses:
+        200:
+          body:
+            type: Supplier
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a supplier
+      body:
+        type: SupplierInput
+      responses:
+        200:
+          body:
+            type: Supplier
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a supplier (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Freight Suppliers
+# ---------------------------------------------------------------------------
+
+/freight-suppliers:
+  description: Freight / transport suppliers (global reference data)
+  get:
+    description: List all freight suppliers
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      search:
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:          1
+                name:        "Midwest Freight LLC"
+                contactName: "John Hauler"
+                phone:       "217-555-0601"
+                email:       "jhauler@midwestfreight.com"
+                city:        "Springfield"
+                state:       "IL"
+                zip:         "62703"
+                active:      true
+                createdAt:   "2026-01-01T08:00:00Z"
+                updatedAt:   "2026-01-01T08:00:00Z"
+              - id:          2
+                name:        "Plains Transport Co."
+                contactName: "Lisa Driver"
+                phone:       "217-555-0602"
+                email:       "ldriver@plainstransport.com"
+                city:        "Decatur"
+                state:       "IL"
+                zip:         "62521"
+                active:      true
+                createdAt:   "2026-01-01T08:00:00Z"
+                updatedAt:   "2026-01-01T08:00:00Z"
+            total: 2
+            page:  1
+  post:
+    description: Create a freight supplier
+    body:
+      type: FreightSupplierInput
+    responses:
+      201:
+        body:
+          type: FreightSupplier
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single freight supplier
+      responses:
+        200:
+          body:
+            type: FreightSupplier
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a freight supplier
+      body:
+        type: FreightSupplierInput
+      responses:
+        200:
+          body:
+            type: FreightSupplier
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a freight supplier (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Customers
+# ---------------------------------------------------------------------------
+
+/customers:
+  description: Customers (global reference data)
+  get:
+    description: List all customers
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      search:
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:          10
+                name:        "Midwest Feed & Grain"
+                contactName: "Janet Cole"
+                phone:       "217-555-0401"
+                email:       "jcole@midwestfeed.com"
+                active:      true
+                createdAt:   "2026-01-01T08:00:00Z"
+                updatedAt:   "2026-01-01T08:00:00Z"
+              - id:          11
+                name:        "Central Elevator Inc."
+                contactName: "Ray Simmons"
+                phone:       "217-555-0402"
+                email:       "rsimmons@centralelevator.com"
+                active:      true
+                createdAt:   "2026-01-01T08:00:00Z"
+                updatedAt:   "2026-01-01T08:00:00Z"
+              - id:          12
+                name:        "Southern Mill Works"
+                contactName: "Dana Reyes"
+                phone:       "217-555-0403"
+                email:       "dreyes@southernmill.com"
+                active:      true
+                createdAt:   "2026-01-01T08:00:00Z"
+                updatedAt:   "2026-01-01T08:00:00Z"
+            total: 3
+            page:  1
+  post:
+    description: Create a customer
+    body:
+      type: CustomerInput
+    responses:
+      201:
+        body:
+          type: Customer
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single customer
+      responses:
+        200:
+          body:
+            type: Customer
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a customer
+      body:
+        type: CustomerInput
+      responses:
+        200:
+          body:
+            type: Customer
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a customer (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Drivers
+# ---------------------------------------------------------------------------
+
+/drivers:
+  description: Drivers (global reference data)
+  get:
+    description: List all drivers
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      supplierId:
+        type: integer
+        required: false
+      freightSupplierId:
+        type: integer
+        required: false
+      search:
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:                1
+                name:              "Dave Kowalski"
+                licenseNumber:     "CDL-IL-44201"
+                phone:             "217-555-0501"
+                freightSupplierId: 1
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+              - id:                2
+                name:              "Maria Santos"
+                licenseNumber:     "CDL-IL-38847"
+                phone:             "217-555-0502"
+                freightSupplierId: 1
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+              - id:                3
+                name:              "Jim Thornton"
+                licenseNumber:     "CDL-IL-91023"
+                phone:             "217-555-0503"
+                freightSupplierId: 2
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+              - id:                4
+                name:              "Angie Webb"
+                licenseNumber:     "CDL-IL-67554"
+                phone:             "217-555-0504"
+                freightSupplierId: 2
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+            total: 4
+            page:  1
+  post:
+    description: Create a driver
+    body:
+      type: DriverInput
+    responses:
+      201:
+        body:
+          type: Driver
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single driver
+      responses:
+        200:
+          body:
+            type: Driver
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a driver
+      body:
+        type: DriverInput
+      responses:
+        200:
+          body:
+            type: Driver
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a driver (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Trucks
+# ---------------------------------------------------------------------------
+
+/trucks:
+  description: Trucks (global reference data)
+  get:
+    description: List all trucks
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      supplierId:
+        type: integer
+        required: false
+      freightSupplierId:
+        type: integer
+        required: false
+      search:
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:                1
+                licensePlate:      "IL-TRK-001"
+                description:       "Peterbilt 389 - Red"
+                tareWeight:        14200
+                tareUnit:          "lbs"
+                tareCertifiedDate: "2025-09-15"
+                freightSupplierId: 1
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+              - id:                2
+                licensePlate:      "IL-TRK-002"
+                description:       "Kenworth T680 - White"
+                tareWeight:        14800
+                tareUnit:          "lbs"
+                tareCertifiedDate: "2025-10-01"
+                freightSupplierId: 1
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+              - id:                3
+                licensePlate:      "IL-TRK-003"
+                description:       "Freightliner Cascadia - Blue"
+                tareWeight:        13900
+                tareUnit:          "lbs"
+                tareCertifiedDate: "2025-08-20"
+                freightSupplierId: 2
+                active:            true
+                createdAt:         "2026-01-01T08:00:00Z"
+                updatedAt:         "2026-01-01T08:00:00Z"
+            total: 3
+            page:  1
+  post:
+    description: Create a truck
+    body:
+      type: TruckInput
+    responses:
+      201:
+        body:
+          type: Truck
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single truck
+      responses:
+        200:
+          body:
+            type: Truck
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a truck
+      body:
+        type: TruckInput
+      responses:
+        200:
+          body:
+            type: Truck
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a truck (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Products
+# ---------------------------------------------------------------------------
+
+/products:
+  description: Products / commodities (global reference data)
+  get:
+    description: List all products
+    is: [pageable, syncable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      category:
+        type: string
+        required: false
+      search:
+        type: string
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:            1
+                name:          "Corn #2 Yellow"
+                category:      "Grain"
+                unit:          "bu"
+                currentStock:  142500
+                minStockAlert: 50000
+                active:        true
+                createdAt:     "2026-01-01T08:00:00Z"
+                updatedAt:     "2026-03-31T06:00:00Z"
+              - id:            2
+                name:          "Soybeans"
+                category:      "Grain"
+                unit:          "bu"
+                currentStock:  88000
+                minStockAlert: 30000
+                active:        true
+                createdAt:     "2026-01-01T08:00:00Z"
+                updatedAt:     "2026-03-31T06:00:00Z"
+              - id:            3
+                name:          "Wheat Hard Red"
+                category:      "Grain"
+                unit:          "bu"
+                currentStock:  21000
+                minStockAlert: 25000
+                active:        true
+                createdAt:     "2026-01-01T08:00:00Z"
+                updatedAt:     "2026-03-31T06:00:00Z"
+              - id:            4
+                name:          "Sunflower Seed"
+                category:      "Oilseed"
+                unit:          "cwt"
+                currentStock:  5400
+                minStockAlert: 2000
+                active:        true
+                createdAt:     "2026-01-01T08:00:00Z"
+                updatedAt:     "2026-03-31T06:00:00Z"
+            total: 4
+            page:  1
+  post:
+    description: Create a product
+    body:
+      type: ProductInput
+    responses:
+      201:
+        body:
+          type: Product
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single product
+      responses:
+        200:
+          body:
+            type: Product
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a product
+      body:
+        type: ProductInput
+      responses:
+        200:
+          body:
+            type: Product
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate a product (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Purchase Orders
+# ---------------------------------------------------------------------------
+
+/purchase-orders:
+  description: |
+    Purchase order references synced from ERP via MuleSoft.
+    Scoped to a location — each location only receives its own POs.
+  get:
+    description: List purchase orders
+    is: [pageable, syncable]
+    queryParameters:
+      locationId:
+        type: integer
+        required: false
+      status:
+        type: PoStatus
+        required: false
+      supplierId:
+        type: integer
+        required: false
+      productId:
+        type: integer
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:               1
+                locationId:       1
+                supplierId:       1
+                productId:        1
+                poNumber:         "PO-2024-0041"
+                quantityOrdered:  50000
+                quantityReceived: 28300
+                unit:             "bu"
+                externalSystem:   "ERP"
+                externalRefId:    "LD-00388"
+                status:           "partial"
+                notes:            null
+                createdAt:        "2024-10-01T00:00:00Z"
+                updatedAt:        "2026-03-30T14:00:00Z"
+              - id:               2
+                locationId:       1
+                supplierId:       2
+                productId:        1
+                poNumber:         "PO-2024-0055"
+                quantityOrdered:  30000
+                quantityReceived: 0
+                unit:             "bu"
+                externalSystem:   "ERP"
+                externalRefId:    null
+                status:           "open"
+                notes:            null
+                createdAt:        "2024-10-08T00:00:00Z"
+                updatedAt:        "2024-10-08T00:00:00Z"
+            total: 2
+            page:  1
+  post:
+    description: Create or upsert a purchase order (called by MuleSoft ERP sync)
+    body:
+      type: PurchaseOrderRefInput
+    responses:
+      201:
+        body:
+          type: PurchaseOrderRef
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single purchase order
+      responses:
+        200:
+          body:
+            type: PurchaseOrderRef
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a purchase order (status, quantities)
+      body:
+        type: PurchaseOrderRefInput
+      responses:
+        200:
+          body:
+            type: PurchaseOrderRef
+        404:
+          body:
+            type: Error
+    delete:
+      description: Cancel a purchase order (sets status to cancelled)
+      responses:
+        200:
+          body:
+            type: PurchaseOrderRef
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Sales Orders
+# ---------------------------------------------------------------------------
+
+/sales-orders:
+  description: |
+    Sales order references synced from ERP via MuleSoft.
+    Scoped to a location — each location only receives its own SOs.
+  get:
+    description: List sales orders
+    is: [pageable, syncable]
+    queryParameters:
+      locationId:
+        type: integer
+        required: false
+      status:
+        type: SoStatus
+        required: false
+      customerId:
+        type: integer
+        required: false
+      productId:
+        type: integer
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:              1
+                locationId:      1
+                customerId:      10
+                productId:       1
+                soNumber:        "SO-2024-0089"
+                quantityOrdered: 40000
+                quantityShipped: 29200
+                unit:            "bu"
+                externalSystem:  "ERP"
+                externalRefId:   null
+                status:          "partial"
+                notes:           null
+                createdAt:       "2024-10-03T00:00:00Z"
+                updatedAt:       "2026-03-30T14:00:00Z"
+              - id:              2
+                locationId:      1
+                customerId:      11
+                productId:       2
+                soNumber:        "SO-2024-0094"
+                quantityOrdered: 25000
+                quantityShipped: 0
+                unit:            "bu"
+                externalSystem:  "ERP"
+                externalRefId:   null
+                status:          "open"
+                notes:           null
+                createdAt:       "2024-10-09T00:00:00Z"
+                updatedAt:       "2024-10-09T00:00:00Z"
+            total: 2
+            page:  1
+  post:
+    description: Create or upsert a sales order (called by MuleSoft ERP sync)
+    body:
+      type: SalesOrderRefInput
+    responses:
+      201:
+        body:
+          type: SalesOrderRef
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single sales order
+      responses:
+        200:
+          body:
+            type: SalesOrderRef
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a sales order (status, quantities)
+      body:
+        type: SalesOrderRefInput
+      responses:
+        200:
+          body:
+            type: SalesOrderRef
+        404:
+          body:
+            type: Error
+    delete:
+      description: Cancel a sales order (sets status to cancelled)
+      responses:
+        200:
+          body:
+            type: SalesOrderRef
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Operators
+# ---------------------------------------------------------------------------
+
+/operators:
+  description: System users (admin access only)
+  get:
+    description: List all operators
+    is: [pageable]
+    queryParameters:
+      locationId:
+        type: integer
+        required: false
+      role:
+        type: OperatorRole
+        required: false
+      active:
+        type: boolean
+        required: false
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:         1
+                username:   "admin"
+                locationId: null
+                role:       "admin"
+                active:     true
+                createdAt:  "2026-01-01T08:00:00Z"
+                updatedAt:  "2026-01-01T08:00:00Z"
+              - id:         2
+                username:   "operator"
+                locationId: 1
+                role:       "location"
+                active:     true
+                createdAt:  "2026-01-10T08:00:00Z"
+                updatedAt:  "2026-01-10T08:00:00Z"
+              - id:         3
+                username:   "merchandiser"
+                locationId: null
+                role:       "merchandiser"
+                active:     true
+                createdAt:  "2026-01-10T08:00:00Z"
+                updatedAt:  "2026-01-10T08:00:00Z"
+            total: 3
+            page:  1
+  post:
+    description: Create a new operator
+    body:
+      type: OperatorInput
+    responses:
+      201:
+        body:
+          type: Operator
+      400:
+        body:
+          type: Error
+      409:
+        description: Username already exists
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single operator
+      responses:
+        200:
+          body:
+            type: Operator
+        404:
+          body:
+            type: Error
+    put:
+      description: Update an operator (role, location, password, active status)
+      body:
+        type: OperatorUpdateInput
+      responses:
+        200:
+          body:
+            type: Operator
+        404:
+          body:
+            type: Error
+    delete:
+      description: Deactivate an operator (soft delete)
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Tickets
+# ---------------------------------------------------------------------------
+
+/tickets:
+  description: Weigh tickets (append-only — no hard deletes)
+
+  /inbound:
+    description: Inbound weigh tickets
+    get:
+      description: List inbound tickets
+      is: [pageable, syncable]
+      queryParameters:
+        locationId:
+          type: integer
+          required: false
+        status:
+          type: TicketStatus
+          required: false
+        supplierId:
+          type: integer
+          required: false
+        productId:
+          type: integer
+          required: false
+        poRefId:
+          type: integer
+          required: false
+        synced:
+          type: boolean
+          required: false
+        dateFrom:
+          type: date-only
+          required: false
+        dateTo:
+          type: date-only
+          required: false
+      responses:
+        200:
+          body:
+            type: object
+            example:
+              data:
+                - id:           1
+                  ticketNumber: "IN-0001"
+                  locationId:   1
+                  terminalId:   1
+                  supplierId:   1
+                  truckId:      1
+                  driverId:     1
+                  productId:    1
+                  poRefId:      1
+                  grossWeight:  42500
+                  tareWeight:   14200
+                  netWeight:    28300
+                  weightUnit:   "lbs"
+                  grossTime:    "2026-03-31T08:10:00Z"
+                  tareTime:     "2026-03-31T08:25:00Z"
+                  status:       "complete"
+                  isSplitLoad:  false
+                  synced:       true
+                  createdAt:    "2026-03-31T08:10:00Z"
+                  updatedAt:    "2026-03-31T08:25:00Z"
+                - id:           2
+                  ticketNumber: "IN-0002"
+                  locationId:   1
+                  terminalId:   1
+                  supplierId:   2
+                  truckId:      3
+                  driverId:     2
+                  productId:    2
+                  poRefId:      null
+                  grossWeight:  38800
+                  tareWeight:   null
+                  netWeight:    null
+                  weightUnit:   "lbs"
+                  grossTime:    "2026-03-31T10:05:00Z"
+                  tareTime:     null
+                  status:       "open"
+                  isSplitLoad:  false
+                  synced:       false
+                  createdAt:    "2026-03-31T10:05:00Z"
+                  updatedAt:    "2026-03-31T10:05:00Z"
+              total: 2
+              page:  1
+    post:
+      description: Create a new inbound ticket
+      body:
+        type: InboundTicketInput
+      responses:
+        201:
+          body:
+            type: InboundTicket
+        400:
+          body:
+            type: Error
+    /{id}:
+      uriParameters:
+        id:
+          type: integer
+      get:
+        description: Get a single inbound ticket
+        responses:
+          200:
+            body:
+              type: InboundTicket
+          404:
+            body:
+              type: Error
+      put:
+        description: Update an inbound ticket (add tare, complete, or void)
+        body:
+          type: InboundTicketStatusUpdate
+        responses:
+          200:
+            body:
+              type: InboundTicket
+          404:
+            body:
+              type: Error
+
+  /outbound:
+    description: Outbound weigh tickets
+    get:
+      description: List outbound tickets
+      is: [pageable, syncable]
+      queryParameters:
+        locationId:
+          type: integer
+          required: false
+        status:
+          type: TicketStatus
+          required: false
+        customerId:
+          type: integer
+          required: false
+        productId:
+          type: integer
+          required: false
+        soRefId:
+          type: integer
+          required: false
+        synced:
+          type: boolean
+          required: false
+        dateFrom:
+          type: date-only
+          required: false
+        dateTo:
+          type: date-only
+          required: false
+      responses:
+        200:
+          body:
+            type: object
+            example:
+              data:
+                - id:           1
+                  ticketNumber: "OUT-0001"
+                  locationId:   1
+                  terminalId:   1
+                  customerId:   10
+                  truckId:      2
+                  driverId:     4
+                  productId:    1
+                  soRefId:      1
+                  grossWeight:  44000
+                  tareWeight:   14800
+                  netWeight:    29200
+                  weightUnit:   "lbs"
+                  grossTime:    "2026-03-31T09:00:00Z"
+                  tareTime:     "2026-03-31T09:18:00Z"
+                  status:       "complete"
+                  isSplitLoad:  false
+                  synced:       true
+                  createdAt:    "2026-03-31T09:00:00Z"
+                  updatedAt:    "2026-03-31T09:18:00Z"
+                - id:           2
+                  ticketNumber: "OUT-0002"
+                  locationId:   1
+                  terminalId:   2
+                  customerId:   11
+                  truckId:      4
+                  driverId:     1
+                  productId:    2
+                  soRefId:      2
+                  grossWeight:  39500
+                  tareWeight:   null
+                  netWeight:    null
+                  weightUnit:   "lbs"
+                  grossTime:    "2026-03-31T11:00:00Z"
+                  tareTime:     null
+                  status:       "open"
+                  isSplitLoad:  false
+                  synced:       false
+                  createdAt:    "2026-03-31T11:00:00Z"
+                  updatedAt:    "2026-03-31T11:00:00Z"
+              total: 2
+              page:  1
+    post:
+      description: Create a new outbound ticket
+      body:
+        type: OutboundTicketInput
+      responses:
+        201:
+          body:
+            type: OutboundTicket
+        400:
+          body:
+            type: Error
+    /{id}:
+      uriParameters:
+        id:
+          type: integer
+      get:
+        description: Get a single outbound ticket
+        responses:
+          200:
+            body:
+              type: OutboundTicket
+          404:
+            body:
+              type: Error
+      put:
+        description: Update an outbound ticket (add tare, complete, or void)
+        body:
+          type: OutboundTicketStatusUpdate
+        responses:
+          200:
+            body:
+              type: OutboundTicket
+          404:
+            body:
+              type: Error
+
+# ---------------------------------------------------------------------------
+# Scale Queue
+# ---------------------------------------------------------------------------
+
+/queue:
+  description: |
+    Scale queue entries per location.
+    Near real-time — merchandisers poll this endpoint every 5–10 seconds.
+  get:
+    description: List queue entries for a location
+    is: [pageable]
+    queryParameters:
+      locationId:
+        type: integer
+        required: true
+      status:
+        type: QueueStatus
+        required: false
+      direction:
+        type: Direction
+        required: false
+      activeOnly:
+        type: boolean
+        required: false
+        default: true
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:               1
+                locationId:       1
+                loadNumber:       "PO-2024-0055"
+                direction:        "inbound"
+                status:           "waitingInLine"
+                inboundTicketId:  null
+                outboundTicketId: null
+                ticketNumber:     null
+                supplierId:       2
+                customerId:       null
+                productId:        1
+                poRefId:          2
+                soRefId:          null
+                truckId:          3
+                driverId:         2
+                terminalId:       null
+                source:           "api"
+                enteredAt:        "2026-03-31T10:00:00Z"
+                firstWeighAt:     null
+                secondWeighAt:    null
+                createdAt:        "2026-03-31T10:00:00Z"
+                updatedAt:        "2026-03-31T10:00:00Z"
+              - id:               2
+                locationId:       1
+                loadNumber:       "SO-2024-0089"
+                direction:        "outbound"
+                status:           "weighing"
+                inboundTicketId:  null
+                outboundTicketId: 2
+                ticketNumber:     "OUT-0002"
+                supplierId:       null
+                customerId:       11
+                productId:        2
+                poRefId:          null
+                soRefId:          2
+                truckId:          4
+                driverId:         1
+                terminalId:       2
+                source:           "manual"
+                enteredAt:        "2026-03-31T10:50:00Z"
+                firstWeighAt:     "2026-03-31T11:00:00Z"
+                secondWeighAt:    null
+                createdAt:        "2026-03-31T10:50:00Z"
+                updatedAt:        "2026-03-31T11:00:00Z"
+            total: 2
+            page:  1
+            asOf:  "2026-03-31T11:05:00Z"
+  post:
+    description: Add a truck to the queue (API / dispatch check-in)
+    body:
+      type: QueueEntryInput
+    responses:
+      201:
+        body:
+          type: QueueEntry
+      400:
+        body:
+          type: Error
+      409:
+        description: Load number already active at this location
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single queue entry
+      responses:
+        200:
+          body:
+            type: QueueEntry
+        404:
+          body:
+            type: Error
+    put:
+      description: Advance or update a queue entry status
+      body:
+        type: QueueStatusUpdate
+      responses:
+        200:
+          body:
+            type: QueueEntry
+        404:
+          body:
+            type: Error
+    delete:
+      description: Remove a queue entry (only valid for waitingInLine status)
+      responses:
+        204:
+        400:
+          description: Cannot delete an entry that is already being weighed or complete
+          body:
+            type: Error
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Webhook Configs
+# ---------------------------------------------------------------------------
+
+/webhook-configs:
+  description: Configure outbound webhooks fired by location sync service
+  get:
+    description: List webhook configurations
+    is: [pageable]
+    queryParameters:
+      active:
+        type: boolean
+        required: false
+      ticketDirection:
+        type: string
+        required: false
+        enum: [inbound, outbound, queue, both]
+    responses:
+      200:
+        body:
+          type: object
+          example:
+            data:
+              - id:              1
+                name:            "MuleSoft — Inbound Ticket Completed"
+                url:             "https://mulesoft.internal/scaleflow/ticket-completed"
+                method:          "post"
+                headersJson:     "{\"Content-Type\":\"application/json\",\"x-api-key\":\"abc123\"}"
+                triggerEvent:    "ticket.completed"
+                ticketDirection: "inbound"
+                active:          true
+                createdAt:       "2026-01-01T08:00:00Z"
+                updatedAt:       "2026-01-01T08:00:00Z"
+              - id:              2
+                name:            "MuleSoft — Outbound Ticket Completed"
+                url:             "https://mulesoft.internal/scaleflow/ticket-completed"
+                method:          "post"
+                headersJson:     "{\"Content-Type\":\"application/json\",\"x-api-key\":\"abc123\"}"
+                triggerEvent:    "ticket.completed"
+                ticketDirection: "outbound"
+                active:          true
+                createdAt:       "2026-01-01T08:00:00Z"
+                updatedAt:       "2026-01-01T08:00:00Z"
+              - id:              3
+                name:            "MuleSoft — Queue Status Change"
+                url:             "https://mulesoft.internal/scaleflow/queue-event"
+                method:          "post"
+                headersJson:     "{\"Content-Type\":\"application/json\",\"x-api-key\":\"abc123\"}"
+                triggerEvent:    "queue.status_changed"
+                ticketDirection: "queue"
+                active:          true
+                createdAt:       "2026-01-01T08:00:00Z"
+                updatedAt:       "2026-01-01T08:00:00Z"
+            total: 3
+            page:  1
+  post:
+    description: Create a webhook configuration
+    body:
+      type: WebhookConfigInput
+    responses:
+      201:
+        body:
+          type: WebhookConfig
+      400:
+        body:
+          type: Error
+  /{id}:
+    uriParameters:
+      id:
+        type: integer
+    get:
+      description: Get a single webhook configuration
+      responses:
+        200:
+          body:
+            type: WebhookConfig
+        404:
+          body:
+            type: Error
+    put:
+      description: Update a webhook configuration
+      body:
+        type: WebhookConfigInput
+      responses:
+        200:
+          body:
+            type: WebhookConfig
+        404:
+          body:
+            type: Error
+    delete:
+      description: Delete a webhook configuration
+      responses:
+        204:
+        404:
+          body:
+            type: Error
+
+# ---------------------------------------------------------------------------
+# Sync
+# ---------------------------------------------------------------------------
+
+/sync:
+  description: Endpoints used exclusively by the location background sync service
+
+  /push:
+    description: Batch upload of OUTBOX entries from a location to the cloud
+    post:
+      description: Upload a batch of outbox entries
+      body:
+        type: OutboxBatch
+      responses:
+        200:
+          body:
+            type: OutboxBatchResult
+        400:
+          body:
+            type: Error
+
+  /reference-data:
+    description: |
+      Pull all global reference data updated since a given timestamp in one call.
+    get:
+      description: Fetch reference data changed since last sync
+      queryParameters:
+        since:
+          type: datetime
+          required: false
+          description: ISO 8601 timestamp. Omit for full refresh (first sync).
+      responses:
+        200:
+          body:
+            type: object
+            example:
+              suppliers:
+                - id:             1
+                  name:           "Heartland Grain Co."
+                  contactName:    "Bob Farmer"
+                  phone:          "217-555-0301"
+                  commodityTypes: "Corn, Soybeans"
+                  active:         true
+                  createdAt:      "2026-01-01T08:00:00Z"
+                  updatedAt:      "2026-01-01T08:00:00Z"
+              freightSuppliers:
+                - id:          1
+                  name:        "Midwest Freight LLC"
+                  contactName: "John Hauler"
+                  phone:       "217-555-0601"
+                  city:        "Springfield"
+                  state:       "IL"
+                  active:      true
+                  createdAt:   "2026-01-01T08:00:00Z"
+                  updatedAt:   "2026-01-01T08:00:00Z"
+              customers:
+                - id:          10
+                  name:        "Midwest Feed & Grain"
+                  contactName: "Janet Cole"
+                  phone:       "217-555-0401"
+                  active:      true
+                  createdAt:   "2026-01-01T08:00:00Z"
+                  updatedAt:   "2026-01-01T08:00:00Z"
+              drivers:
+                - id:                1
+                  name:              "Dave Kowalski"
+                  licenseNumber:     "CDL-IL-44201"
+                  phone:             "217-555-0501"
+                  freightSupplierId: 1
+                  active:            true
+                  createdAt:         "2026-01-01T08:00:00Z"
+                  updatedAt:         "2026-01-01T08:00:00Z"
+              trucks:
+                - id:                1
+                  licensePlate:      "IL-TRK-001"
+                  description:       "Peterbilt 389 - Red"
+                  tareWeight:        14200
+                  tareUnit:          "lbs"
+                  freightSupplierId: 1
+                  active:            true
+                  createdAt:         "2026-01-01T08:00:00Z"
+                  updatedAt:         "2026-01-01T08:00:00Z"
+              products:
+                - id:            1
+                  name:          "Corn #2 Yellow"
+                  category:      "Grain"
+                  unit:          "bu"
+                  currentStock:  142500
+                  minStockAlert: 50000
+                  active:        true
+                  createdAt:     "2026-01-01T08:00:00Z"
+                  updatedAt:     "2026-03-31T06:00:00Z"
+              asOf: "2026-03-31T11:05:00Z"
