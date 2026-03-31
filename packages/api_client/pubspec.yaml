@@ -1,0 +1,12 @@
+name: lnc_api_client
+description: HTTP client for the LNC Scale MuleSoft API
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+
+dependencies:
+  dio: ^5.7.0
+  scaleflow_core:
+    path: ../core
