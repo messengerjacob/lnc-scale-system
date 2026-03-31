@@ -49,7 +49,15 @@ extension SoStatusX on SoStatus {
       SoStatus.values.firstWhere((e) => e.name == v.toLowerCase());
 }
 
+extension TicketDirectionX on TicketDirection {
+  static TicketDirection fromString(String v) =>
+      TicketDirection.values.firstWhere((e) => e.name == v.toLowerCase());
+}
+
 extension QueueStatusX on QueueStatus {
+  static QueueStatus fromString(String v) =>
+      QueueStatus.values.firstWhere((e) => e.name == v);
+
   String get label => switch (this) {
         QueueStatus.waitingInLine => 'In Line',
         QueueStatus.weighing => '1st Weighing',

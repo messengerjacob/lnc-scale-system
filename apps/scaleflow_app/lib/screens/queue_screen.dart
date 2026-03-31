@@ -4,9 +4,10 @@ import '../mock_data.dart';
 import 'weigh_ticket_screen.dart';
 
 class QueueScreen extends StatefulWidget {
-  const QueueScreen({super.key, required this.locationId});
+  const QueueScreen({super.key, required this.locationId, this.isMerchandiser = false});
 
   final int locationId;
+  final bool isMerchandiser;
 
   @override
   State<QueueScreen> createState() => _QueueScreenState();
@@ -100,6 +101,7 @@ class _QueueScreenState extends State<QueueScreen> {
                     onMoveScale: _moveScale,
                     onRemove: _removeEntry,
                     onAddTruck: _showAddSheet,
+                    isMerchandiser: widget.isMerchandiser,
                   ),
                 ),
 
@@ -113,6 +115,7 @@ class _QueueScreenState extends State<QueueScreen> {
                     completed: completed,
                     terminals: terminals,
                     onGetBackInLine: _getBackInLine,
+                    isMerchandiser: widget.isMerchandiser,
                   ),
                 ),
               ],
@@ -358,6 +361,7 @@ class _ScaleQueuePanel extends StatelessWidget {
     required this.onMoveScale,
     required this.onRemove,
     required this.onAddTruck,
+    required this.isMerchandiser,
   });
 
   final ScaleTerminal? terminal;
@@ -367,6 +371,7 @@ class _ScaleQueuePanel extends StatelessWidget {
   final void Function(QueueEntry) onMoveScale;
   final void Function(QueueEntry) onRemove;
   final VoidCallback onAddTruck;
+  final bool isMerchandiser;
 
   int _waitingCount() =>
       entries.where((e) => e.status == QueueStatus.waitingInLine).length;
@@ -408,14 +413,14 @@ class _ScaleQueuePanel extends StatelessWidget {
                     return _QueueLineCard(
                       entry: entry,
                       position: position,
-                      onSendToScale: entry.status == QueueStatus.waitingInLine
+                      onSendToScale: entry.status == QueueStatus.waitingInLine && !isMerchandiser
                           ? () => onSendToScale(entry)
                           : null,
                       onMoveScale: multipleScales &&
-                              entry.status == QueueStatus.waitingInLine
+                              entry.status == QueueStatus.waitingInLine && !isMerchandiser
                           ? () => onMoveScale(entry)
                           : null,
-                      onRemove: entry.status == QueueStatus.waitingInLine
+                      onRemove: entry.status == QueueStatus.waitingInLine && !isMerchandiser
                           ? () => onRemove(entry)
                           : null,
                     );
@@ -424,26 +429,27 @@ class _ScaleQueuePanel extends StatelessWidget {
         ),
 
         // Add truck footer button
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
-          ),
-          child: SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: terminal != null ? onAddTruck : null,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Truck'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+        if (!isMerchandiser)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: terminal != null ? onAddTruck : null,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add Truck'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -459,12 +465,14 @@ class _LoadingUnloadingPanel extends StatelessWidget {
     required this.completed,
     required this.terminals,
     required this.onGetBackInLine,
+    required this.isMerchandiser,
   });
 
   final List<QueueEntry> entries;
   final List<QueueEntry> completed;
   final List<ScaleTerminal> terminals;
   final void Function(QueueEntry) onGetBackInLine;
+  final bool isMerchandiser;
 
   @override
   Widget build(BuildContext context) {
@@ -489,7 +497,7 @@ class _LoadingUnloadingPanel extends StatelessWidget {
                             padding: const EdgeInsets.only(bottom: 8),
                             child: _LoadingCard(
                               entry: e,
-                              onGetBackInLine: () => onGetBackInLine(e),
+                              onGetBackInLine: !isMerchandiser ? () => onGetBackInLine(e) : null,
                             ),
                           )),
                       if (completed.isNotEmpty) ...[
@@ -672,7 +680,7 @@ class _LoadingCard extends StatelessWidget {
   });
 
   final QueueEntry entry;
-  final VoidCallback onGetBackInLine;
+  final VoidCallback? onGetBackInLine;
 
   @override
   Widget build(BuildContext context) {
@@ -765,26 +773,27 @@ class _LoadingCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onGetBackInLine,
-                icon: const Icon(Icons.keyboard_return_rounded, size: 15),
-                label: const Text('Get Back in Line',
-                    style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE65100),
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6)),
-                  elevation: 0,
+            if (onGetBackInLine != null)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onGetBackInLine,
+                  icon: const Icon(Icons.keyboard_return_rounded, size: 15),
+                  label: const Text('Get Back in Line',
+                      style: TextStyle(fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE65100),
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6)),
+                    elevation: 0,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),

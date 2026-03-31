@@ -68,15 +68,17 @@ Future<void> _showPdfForTicket({
 
 
 class TicketsScreen extends StatelessWidget {
-  const TicketsScreen({super.key, required this.direction});
+  const TicketsScreen({super.key, required this.direction, this.locationId});
 
   final TicketDirection direction;
+  final int? locationId;
 
   bool get _isInbound => direction == TicketDirection.inbound;
 
   @override
   Widget build(BuildContext context) {
-    final tickets = _isInbound ? mockInboundTickets : mockOutboundTickets;
+    final allTickets = _isInbound ? mockInboundTickets : mockOutboundTickets;
+    final tickets = locationId == null ? allTickets : allTickets.where((t) => (t as dynamic).locationId == locationId).toList();
     final color = _isInbound ? const Color(0xFF1565C0) : const Color(0xFF2E7D32);
 
     return Scaffold(

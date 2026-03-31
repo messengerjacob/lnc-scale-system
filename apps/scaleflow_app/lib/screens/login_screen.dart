@@ -9,6 +9,7 @@ import 'home_screen.dart';
 const _exampleUsers = [
   _ExampleUser(username: 'operator', password: 'operator123', role: 'Location'),
   _ExampleUser(username: 'admin', password: 'admin123', role: 'Admin'),
+  _ExampleUser(username: 'merchandiser', password: 'merchandiser123', role: 'Merchandiser'),
 ];
 
 class _ExampleUser {
@@ -62,12 +63,23 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         setState(() => _errorMessage = 'Invalid username or password.');
       }
-    } else {
+    } else if (_selectedRole == 'Admin') {
       if (username == 'admin' && password == 'admin123') {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (_) => const HomeScreen(location: null, isAdmin: true),
+          ),
+        );
+      } else {
+        setState(() => _errorMessage = 'Invalid username or password.');
+      }
+    } else if (_selectedRole == 'Merchandiser') {
+      if (username == 'merchandiser' && password == 'merchandiser123') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const HomeScreen(location: null, isAdmin: false, isMerchandiser: true),
           ),
         );
       } else {
@@ -165,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           value: _selectedRole,
                           hint: 'Select role',
                           prefixIcon: Icons.badge_outlined,
-                          items: const ['Location', 'Admin'],
+                          items: const ['Location', 'Admin', 'Merchandiser'],
                           itemLabel: (r) => r,
                           onChanged: (v) => setState(() {
                             _selectedRole = v;

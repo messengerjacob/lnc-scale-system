@@ -50,7 +50,7 @@ CREATE TABLE SCALE_TERMINAL (
 );
 
 -- ---------------------------------------------------------------------------
--- Reference data
+-- Reference data (global — synced to all locations)
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE SUPPLIER (
@@ -61,6 +61,22 @@ CREATE TABLE SUPPLIER (
     email            NVARCHAR(200)  NULL,
     address          NVARCHAR(300)  NULL,
     commodity_types  NVARCHAR(500)  NULL,
+    active           BIT            NOT NULL DEFAULT 1,
+    created_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE TABLE FREIGHT_SUPPLIER (
+    id               INT IDENTITY(1,1) PRIMARY KEY,
+    name             NVARCHAR(150)  NOT NULL,
+    contact_name     NVARCHAR(100)  NULL,
+    phone            NVARCHAR(30)   NULL,
+    email            NVARCHAR(150)  NULL,
+    address          NVARCHAR(255)  NULL,
+    city             NVARCHAR(100)  NULL,
+    state            NVARCHAR(50)   NULL,
+    zip              NVARCHAR(20)   NULL,
+    active           BIT            NOT NULL DEFAULT 1,
     created_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -72,20 +88,24 @@ CREATE TABLE CUSTOMER (
     phone         NVARCHAR(30)   NULL,
     email         NVARCHAR(200)  NULL,
     address       NVARCHAR(300)  NULL,
+    active        BIT            NOT NULL DEFAULT 1,
     created_at    DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at    DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 CREATE TABLE DRIVER (
-    id              INT IDENTITY(1,1) PRIMARY KEY,
-    name            NVARCHAR(150)  NOT NULL,
-    license_number  NVARCHAR(50)   NULL,
-    phone           NVARCHAR(30)   NULL,
-    email           NVARCHAR(200)  NULL,
+    id                  INT IDENTITY(1,1) PRIMARY KEY,
+    name                NVARCHAR(150)  NOT NULL,
+    license_number      NVARCHAR(50)   NULL,
+    phone               NVARCHAR(30)   NULL,
+    email               NVARCHAR(200)  NULL,
     -- Hashed PIN used by the future mobile app
-    app_pin         NVARCHAR(100)  NULL,
-    created_at      DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
-    updated_at      DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+    app_pin             NVARCHAR(100)  NULL,
+    supplier_id         INT            NULL REFERENCES SUPPLIER(id),
+    freight_supplier_id INT            NULL REFERENCES FREIGHT_SUPPLIER(id),
+    active              BIT            NOT NULL DEFAULT 1,
+    created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 CREATE TABLE TRUCK (
@@ -95,6 +115,9 @@ CREATE TABLE TRUCK (
     tare_weight         DECIMAL(10,3)  NULL,
     tare_unit           NVARCHAR(10)   NULL CHECK (tare_unit IN ('lbs','kg','tons')),
     tare_certified_date DATE           NULL,
+    supplier_id         INT            NULL REFERENCES SUPPLIER(id),
+    freight_supplier_id INT            NULL REFERENCES FREIGHT_SUPPLIER(id),
+    active              BIT            NOT NULL DEFAULT 1,
     created_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at          DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -106,16 +129,18 @@ CREATE TABLE PRODUCT (
     unit             NVARCHAR(30)   NOT NULL,
     current_stock    DECIMAL(14,3)  NOT NULL DEFAULT 0,
     min_stock_alert  DECIMAL(14,3)  NULL,
+    active           BIT            NOT NULL DEFAULT 1,
     created_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at       DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 -- ---------------------------------------------------------------------------
--- PO / SO references  (synced from ERP via MuleSoft, not managed here)
+-- PO / SO references  (synced from ERP via MuleSoft, location-specific)
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE PURCHASE_ORDER_REF (
     id                INT IDENTITY(1,1) PRIMARY KEY,
+    location_id       INT             NOT NULL REFERENCES LOCATION(id),
     supplier_id       INT             NOT NULL REFERENCES SUPPLIER(id),
     product_id        INT             NOT NULL REFERENCES PRODUCT(id),
     po_number         NVARCHAR(100)   NOT NULL,
@@ -134,6 +159,7 @@ CREATE TABLE PURCHASE_ORDER_REF (
 
 CREATE TABLE SALES_ORDER_REF (
     id                INT IDENTITY(1,1) PRIMARY KEY,
+    location_id       INT             NOT NULL REFERENCES LOCATION(id),
     customer_id       INT             NOT NULL REFERENCES CUSTOMER(id),
     product_id        INT             NOT NULL REFERENCES PRODUCT(id),
     so_number         NVARCHAR(100)   NOT NULL,
@@ -148,6 +174,24 @@ CREATE TABLE SALES_ORDER_REF (
     notes             NVARCHAR(MAX)   NULL,
     created_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+-- ---------------------------------------------------------------------------
+-- Users & Security
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE OPERATOR (
+    id               INT IDENTITY(1,1) PRIMARY KEY,
+    username         NVARCHAR(100)   NOT NULL UNIQUE,
+    password_hash    NVARCHAR(255)   NOT NULL,
+    location_id      INT             NULL REFERENCES LOCATION(id),
+    -- 'location' = scale terminal operator (location_id required)
+    -- 'admin'    = full system access (location_id NULL)
+    -- 'merchandiser' = cloud read-only across all locations (location_id NULL)
+    role             NVARCHAR(20)    NOT NULL CHECK (role IN ('location','admin','merchandiser')),
+    active           BIT             NOT NULL DEFAULT 1,
+    created_at       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 -- ---------------------------------------------------------------------------
@@ -263,9 +307,10 @@ CREATE TABLE QUEUE_ENTRY (
 
 CREATE TABLE OUTBOX (
     id               INT IDENTITY(1,1) PRIMARY KEY,
-    -- 'INBOUND' or 'OUTBOUND'
-    ticket_type      NVARCHAR(10)    NOT NULL CHECK (ticket_type IN ('INBOUND','OUTBOUND')),
-    ticket_id        INT             NOT NULL,
+    location_id      INT             NOT NULL REFERENCES LOCATION(id),
+    -- 'INBOUND', 'OUTBOUND', or 'QUEUE'
+    entity_type      NVARCHAR(10)    NOT NULL CHECK (entity_type IN ('INBOUND','OUTBOUND','QUEUE')),
+    entity_id        INT             NOT NULL,
     payload_json     NVARCHAR(MAX)   NOT NULL,
     -- 'pending', 'sent', 'failed'
     status           NVARCHAR(10)    NOT NULL DEFAULT 'pending'
@@ -296,8 +341,8 @@ CREATE TABLE WEBHOOK_CONFIG (
     method            NVARCHAR(10)    NOT NULL CHECK (method IN ('get','post','put','patch')),
     headers_json      NVARCHAR(MAX)   NULL,
     trigger_event     NVARCHAR(100)   NOT NULL,
-    -- 'inbound', 'outbound', or future: 'both' (handled in app logic)
-    ticket_direction  NVARCHAR(10)    NOT NULL CHECK (ticket_direction IN ('inbound','outbound')),
+    -- 'inbound', 'outbound', 'queue', or 'both'
+    ticket_direction  NVARCHAR(10)    NOT NULL CHECK (ticket_direction IN ('inbound','outbound','queue','both')),
     active            BIT             NOT NULL DEFAULT 1,
     created_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME(),
     updated_at        DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
@@ -307,6 +352,7 @@ CREATE TABLE WEBHOOK_LOG (
     id                  INT IDENTITY(1,1) PRIMARY KEY,
     inbound_ticket_id   INT             NULL REFERENCES INBOUND_TICKET(id),
     outbound_ticket_id  INT             NULL REFERENCES OUTBOUND_TICKET(id),
+    queue_entry_id      INT             NULL REFERENCES QUEUE_ENTRY(id),
     config_id           INT             NOT NULL REFERENCES WEBHOOK_CONFIG(id),
     http_status         INT             NULL,
     response_body       NVARCHAR(MAX)   NULL,
@@ -315,20 +361,33 @@ CREATE TABLE WEBHOOK_LOG (
 );
 
 -- ---------------------------------------------------------------------------
+-- Sync state — tracks last successful pull per location per entity type
+-- (used by the sync service for incremental pulls from cloud)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE SYNC_STATE (
+    id               INT IDENTITY(1,1) PRIMARY KEY,
+    location_id      INT             NOT NULL REFERENCES LOCATION(id),
+    entity_type      NVARCHAR(50)    NOT NULL,
+    last_sync_at     DATETIME2       NOT NULL DEFAULT '2000-01-01',
+    CONSTRAINT UQ_SYNC_STATE UNIQUE (location_id, entity_type)
+);
+
+-- ---------------------------------------------------------------------------
 -- Indexes — covering the most common query patterns
 -- ---------------------------------------------------------------------------
 
--- Outbox drain: pull oldest pending rows first
-CREATE INDEX IX_OUTBOX_status_created
-    ON OUTBOX (status, created_at)
+-- Outbox drain: pull oldest pending rows first per location
+CREATE INDEX IX_OUTBOX_location_status_created
+    ON OUTBOX (location_id, status, created_at)
     WHERE status IN ('pending','failed');
 
--- Ticket lookups by status and date
-CREATE INDEX IX_INBOUND_status_created
-    ON INBOUND_TICKET (status, created_at DESC);
+-- Ticket lookups by location, status, and date
+CREATE INDEX IX_INBOUND_location_status_created
+    ON INBOUND_TICKET (location_id, status, created_at DESC);
 
-CREATE INDEX IX_OUTBOUND_status_created
-    ON OUTBOUND_TICKET (status, created_at DESC);
+CREATE INDEX IX_OUTBOUND_location_status_created
+    ON OUTBOUND_TICKET (location_id, status, created_at DESC);
 
 -- Unsynced tickets (offline → online drain)
 CREATE INDEX IX_INBOUND_synced
@@ -336,6 +395,20 @@ CREATE INDEX IX_INBOUND_synced
 
 CREATE INDEX IX_OUTBOUND_synced
     ON OUTBOUND_TICKET (synced) WHERE synced = 0;
+
+-- PO/SO lookups by location and status (most common query from location app)
+CREATE INDEX IX_PO_location_status
+    ON PURCHASE_ORDER_REF (location_id, status, updated_at DESC);
+
+CREATE INDEX IX_SO_location_status
+    ON SALES_ORDER_REF (location_id, status, updated_at DESC);
+
+-- Incremental sync pull — rows updated after last_sync_at
+CREATE INDEX IX_PO_updated
+    ON PURCHASE_ORDER_REF (updated_at DESC);
+
+CREATE INDEX IX_SO_updated
+    ON SALES_ORDER_REF (updated_at DESC);
 
 -- Inventory log per product
 CREATE INDEX IX_INVENTORY_LOG_product_created
@@ -354,3 +427,7 @@ CREATE INDEX IX_QUEUE_ENTRY_location_status
 CREATE INDEX IX_QUEUE_ENTRY_load_number
     ON QUEUE_ENTRY (load_number, location_id)
     WHERE status <> 'complete';
+
+-- Sync state lookup
+CREATE INDEX IX_SYNC_STATE_location
+    ON SYNC_STATE (location_id, entity_type);
